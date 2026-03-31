@@ -1,1 +1,1 @@
-drop table if not exists users cascade;
+drop table if exists users cascade;
