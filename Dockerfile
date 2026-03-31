@@ -1,4 +1,4 @@
-FROM golang:1.25
+FROM golang:1.22
 
 WORKDIR /app
 
@@ -7,6 +7,7 @@ RUN go mod download
 
 COPY . .
 
-RUN go build -o main ./cmd/api/main.go
+RUN go build -o api ./cmd/api/main.go
+RUN go build -o worker ./cmd/worker/main.go
 
-CMD ["./main"]
+CMD ["./api"]
