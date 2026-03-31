@@ -1,0 +1,1 @@
+drop table if not exists monitors cascade;
