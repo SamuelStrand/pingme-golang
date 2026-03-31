@@ -13,6 +13,10 @@ func NewPostgres() (*sql.DB, error) {
 		os.Getenv("DB_USER"),
 		os.Getenv("DB_PASSWORD"),
 		os.Getenv("DB_NAME"))
-	
-	return sql.Open("postgres", connStr)
+
+	db, err := sql.Open("postgres", connStr)
+	if err != nil {
+		return nil, err
+	}
+	return db, db.Ping()
 }
