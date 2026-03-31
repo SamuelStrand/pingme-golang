@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net/http"
+	"pingme-golang/internal/config"
 	"pingme-golang/internal/middleware"
 
 	"pingme-golang/internal/database"
@@ -10,6 +11,8 @@ import (
 )
 
 func main() {
+	_ = config.LoadEnv()
+
 	db, err := database.NewPostgres()
 	if err != nil {
 		log.Fatal(err)
