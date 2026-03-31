@@ -1,33 +1,37 @@
 package handler
 
 import (
-	"database/sql"
-	"encoding/json"
 	"net/http"
+
+	"github.com/gin-gonic/gin"
+	"github.com/jmoiron/sqlx"
 )
 
 type HealthHandler struct {
-	DB *sql.DB
+	DB *sqlx.DB
 }
 
-func (h *HealthHandler) Health(w http.ResponseWriter, r *http.Request) {
+func (h *HealthHandler) Health(c *gin.Context) {
 	err := h.DB.Ping()
 	status := "connected"
 
 	if err != nil {
 		status = "not connected"
-		w.WriteHeader(http.StatusInternalServerError)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"status": "up",
+			"db":     status,
+		})
+		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+	c.JSON(http.StatusOK, gin.H{
 		"status": "up",
-		"db":     status})
+		"db":     status,
+	})
 }
 
-func (h *HealthHandler) Ready(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+func (h *HealthHandler) Ready(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
 		"status": "ready",
 	})
 }
