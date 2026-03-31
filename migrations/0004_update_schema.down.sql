@@ -1,14 +1,14 @@
 alter table users
-drop column password text;
-drop column user_tg text;
+drop column if exists password;
+drop column if exists user_tg;
 
 alter table monitors
-drop column name text,
-drop column interval_seconds,
-drop column timeot_seconds,
-drop column enabled boolean,
-drop column last_status text;
+drop column if exists name,
+drop column if exists interval_seconds,
+drop column if exists timeout_seconds,
+drop column if exists enabled,
+drop column if exists last_status;
 
 alter table checklogs
-drop column success,
-drop column error_message;
+drop column if exists success,
+drop column if exists error_message;

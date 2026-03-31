@@ -1,14 +1,14 @@
 alter table users
-add column password text;
-add column user_tg text;
+add column if not exists password text,
+add column if not exists user_tg text;
 
 alter table monitors
-add column name text,
-add column interval_seconds int default 60,
-add column timeot_seconds int default 5,
-add column enabled boolean default true,
-add column last_status text default 'unknown';
+add column if not exists name text,
+add column if not exists interval_seconds int not null default 60,
+add column if not exists timeout_seconds int not null default 5,
+add column if not exists enabled boolean not null default true,
+add column if not exists last_status text not null default 'unknown';
 
 alter table checklogs
-add column success boolean,
-add column error_message text;
+add column if not exists success boolean,
+add column if not exists error_message text;

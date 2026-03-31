@@ -4,7 +4,7 @@ import "time"
 
 type CheckLog struct {
 	ID             string    `db:"id" json:"id"`
-	TargetID       string    `db:"target_id" json:"target_id"`
+	MonitorID      string    `db:"monitor_id" json:"monitor_id"`
 	StatusCode     int       `db:"status_code" json:"status_code"`
 	ResponseTimeMs int       `db:"response_time_ms" json:"response_time_ms"`
 	Success        bool      `db:"success" json:"success"`
