@@ -2,11 +2,13 @@ package handler
 
 import (
 	"net/http"
+
+	"github.com/gin-gonic/gin"
 )
 
-func SwaggerUI(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = w.Write([]byte(`<!doctype html>
+func SwaggerUI(c *gin.Context) {
+	c.Header("Content-Type", "text/html; charset=utf-8")
+	c.String(http.StatusOK, `<!doctype html>
 <html>
   <head>
     <meta charset="utf-8" />
@@ -28,5 +30,5 @@ func SwaggerUI(w http.ResponseWriter, r *http.Request) {
       };
     </script>
   </body>
-</html>`))
+</html>`)
 }

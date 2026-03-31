@@ -1,48 +1,48 @@
 package auth
 
 import (
-	"context"
 	"net/http"
 	"strings"
+
+	"github.com/gin-gonic/gin"
 
 	"pingme-golang/internal/httpx"
 )
 
-type contextKey string
+const userIDKey = "user_id"
 
-const userIDKey contextKey = "user_id"
-
-func UserIDFromContext(ctx context.Context) (string, bool) {
-	v, ok := ctx.Value(userIDKey).(string)
-	return v, ok && v != ""
+func UserIDFromGin(c *gin.Context) (string, bool) {
+	v, ok := c.Get(userIDKey)
+	if !ok {
+		return "", false
+	}
+	s, ok := v.(string)
+	return s, ok && s != ""
 }
 
-func WithUserID(ctx context.Context, userID string) context.Context {
-	return context.WithValue(ctx, userIDKey, userID)
-}
+func AuthMiddleware(cfg Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		authz := c.GetHeader("Authorization")
+		if authz == "" {
+			c.JSON(http.StatusUnauthorized, httpx.ErrorResponse{Error: "unauthorized", Message: "missing Authorization header"})
+			c.Abort()
+			return
+		}
+		parts := strings.SplitN(authz, " ", 2)
+		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+			c.JSON(http.StatusUnauthorized, httpx.ErrorResponse{Error: "unauthorized", Message: "invalid Authorization header"})
+			c.Abort()
+			return
+		}
 
-func AuthMiddleware(cfg Config) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			authz := r.Header.Get("Authorization")
-			if authz == "" {
-				httpx.Error(w, http.StatusUnauthorized, "unauthorized", "missing Authorization header", nil)
-				return
-			}
-			parts := strings.SplitN(authz, " ", 2)
-			if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
-				httpx.Error(w, http.StatusUnauthorized, "unauthorized", "invalid Authorization header", nil)
-				return
-			}
+		claims, err := ParseAccessToken(cfg, parts[1])
+		if err != nil || claims.Subject == "" {
+			c.JSON(http.StatusUnauthorized, httpx.ErrorResponse{Error: "unauthorized", Message: "invalid token"})
+			c.Abort()
+			return
+		}
 
-			claims, err := ParseAccessToken(cfg, parts[1])
-			if err != nil || claims.Subject == "" {
-				httpx.Error(w, http.StatusUnauthorized, "unauthorized", "invalid token", nil)
-				return
-			}
-
-			ctx := WithUserID(r.Context(), claims.Subject)
-			next.ServeHTTP(w, r.WithContext(ctx))
-		})
+		c.Set(userIDKey, claims.Subject)
+		c.Next()
 	}
 }

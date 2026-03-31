@@ -3,16 +3,14 @@ package main
 import (
 	_ "embed"
 	"log"
-	"net/http"
 	"os"
 	"pingme-golang/internal/auth"
 	"pingme-golang/internal/config"
-	"pingme-golang/internal/middleware"
 
 	"pingme-golang/internal/database"
 	"pingme-golang/internal/handler"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/gin-gonic/gin"
 )
 
 //go:embed openapi.yaml
@@ -35,28 +33,30 @@ func main() {
 	authHandler := &handler.AuthHandler{Repo: authRepo, Cfg: authCfg}
 	userHandler := &handler.UserHandler{Repo: authRepo}
 
-	r := chi.NewRouter()
-	r.Use(middleware.Logging)
+	r := gin.New()
+	r.Use(gin.Logger(), gin.Recovery())
 
-	r.Get("/health", healthHandler.Health)
-	r.Get("/ready", healthHandler.Ready)
-	r.Get("/swagger", handler.SwaggerUI)
-	r.Get("/openapi.yaml", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/yaml; charset=utf-8")
-		_, _ = w.Write(openAPISpec)
+	r.GET("/health", healthHandler.Health)
+	r.GET("/ready", healthHandler.Ready)
+	r.GET("/swagger", handler.SwaggerUI)
+	r.GET("/openapi.yaml", func(c *gin.Context) {
+		c.Header("Content-Type", "application/yaml; charset=utf-8")
+		c.String(200, string(openAPISpec))
 	})
 
-	r.Route("/auth", func(r chi.Router) {
-		r.Post("/register", authHandler.Register)
-		r.Post("/login", authHandler.Login)
-		r.Post("/refresh", authHandler.Refresh)
-		r.Post("/logout", authHandler.Logout)
-	})
+	authGroup := r.Group("/auth")
+	{
+		authGroup.POST("/register", authHandler.Register)
+		authGroup.POST("/login", authHandler.Login)
+		authGroup.POST("/refresh", authHandler.Refresh)
+		authGroup.POST("/logout", authHandler.Logout)
+	}
 
-	r.Group(func(r chi.Router) {
-		r.Use(auth.AuthMiddleware(authCfg))
-		r.Get("/me", userHandler.Me)
-	})
+	protected := r.Group("/")
+	protected.Use(auth.AuthMiddleware(authCfg))
+	{
+		protected.GET("/me", userHandler.Me)
+	}
 
 	addr := os.Getenv("HTTP_ADDR")
 	if addr == "" {
@@ -64,5 +64,5 @@ func main() {
 	}
 
 	log.Printf("Server started on %s", addr)
-	log.Fatal(http.ListenAndServe(addr, r))
+	log.Fatal(r.Run(addr))
 }

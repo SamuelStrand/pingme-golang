@@ -3,12 +3,13 @@ package handler
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/gin-gonic/gin"
 
 	"pingme-golang/internal/auth"
 	"pingme-golang/internal/httpx"
@@ -33,10 +34,10 @@ type refreshRequest struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
-func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
+func (h *AuthHandler) Register(c *gin.Context) {
 	var req registerRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httpx.Error(w, http.StatusBadRequest, "invalid_json", "invalid json", nil)
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, httpx.ErrorResponse{Error: "invalid_json", Message: "invalid json"})
 		return
 	}
 	req.Email = strings.TrimSpace(strings.ToLower(req.Email))
@@ -48,138 +49,138 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		if len(req.Password) < 8 {
 			fields["password"] = "min length is 8"
 		}
-		httpx.Error(w, http.StatusBadRequest, "validation_error", "invalid email or password", fields)
+		c.JSON(http.StatusBadRequest, httpx.ErrorResponse{Error: "validation_error", Message: "invalid email or password", Fields: fields})
 		return
 	}
 
 	hash, err := auth.HashPassword(req.Password)
 	if err != nil {
-		httpx.Error(w, http.StatusInternalServerError, "internal_error", "failed to hash password", nil)
+		c.JSON(http.StatusInternalServerError, httpx.ErrorResponse{Error: "internal_error", Message: "failed to hash password"})
 		return
 	}
 
-	u, err := h.Repo.CreateUser(r.Context(), req.Email, hash)
+	u, err := h.Repo.CreateUser(c.Request.Context(), req.Email, hash)
 	if err != nil {
 		if errors.Is(err, auth.ErrEmailTaken) {
-			httpx.Error(w, http.StatusConflict, "email_taken", "email already exists", map[string]string{"email": "already exists"})
+			c.JSON(http.StatusConflict, httpx.ErrorResponse{Error: "email_taken", Message: "email already exists", Fields: map[string]string{"email": "already exists"}})
 			return
 		}
 		log.Printf("register: create user failed: %v", err)
-		httpx.Error(w, http.StatusInternalServerError, "internal_error", "failed to create user", nil)
+		c.JSON(http.StatusInternalServerError, httpx.ErrorResponse{Error: "internal_error", Message: "failed to create user"})
 		return
 	}
 
-	pair, err := h.issueTokenPair(r.Context(), u.ID)
+	pair, err := h.issueTokenPair(c.Request.Context(), u.ID)
 	if err != nil {
 		log.Printf("register: issue tokens failed: %v", err)
-		httpx.Error(w, http.StatusInternalServerError, "internal_error", "failed to issue tokens", nil)
+		c.JSON(http.StatusInternalServerError, httpx.ErrorResponse{Error: "internal_error", Message: "failed to issue tokens"})
 		return
 	}
 
-	httpx.WriteJSON(w, http.StatusCreated, pair)
+	c.JSON(http.StatusCreated, pair)
 }
 
-func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
+func (h *AuthHandler) Login(c *gin.Context) {
 	var req loginRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httpx.Error(w, http.StatusBadRequest, "invalid_json", "invalid json", nil)
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, httpx.ErrorResponse{Error: "invalid_json", Message: "invalid json"})
 		return
 	}
 	req.Email = strings.TrimSpace(strings.ToLower(req.Email))
 	if req.Email == "" || req.Password == "" {
-		httpx.Error(w, http.StatusUnauthorized, "invalid_credentials", "invalid credentials", nil)
+		c.JSON(http.StatusUnauthorized, httpx.ErrorResponse{Error: "invalid_credentials", Message: "invalid credentials"})
 		return
 	}
 
-	u, err := h.Repo.GetUserByEmail(r.Context(), req.Email)
+	u, err := h.Repo.GetUserByEmail(c.Request.Context(), req.Email)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			httpx.Error(w, http.StatusUnauthorized, "invalid_credentials", "invalid credentials", nil)
+			c.JSON(http.StatusUnauthorized, httpx.ErrorResponse{Error: "invalid_credentials", Message: "invalid credentials"})
 			return
 		}
-		httpx.Error(w, http.StatusInternalServerError, "internal_error", "failed to load user", nil)
+		c.JSON(http.StatusInternalServerError, httpx.ErrorResponse{Error: "internal_error", Message: "failed to load user"})
 		return
 	}
 
 	if err := auth.ComparePassword(u.Password, req.Password); err != nil {
-		httpx.Error(w, http.StatusUnauthorized, "invalid_credentials", "invalid credentials", nil)
+		c.JSON(http.StatusUnauthorized, httpx.ErrorResponse{Error: "invalid_credentials", Message: "invalid credentials"})
 		return
 	}
 
-	pair, err := h.issueTokenPair(r.Context(), u.ID)
+	pair, err := h.issueTokenPair(c.Request.Context(), u.ID)
 	if err != nil {
 		log.Printf("login: issue tokens failed: %v", err)
-		httpx.Error(w, http.StatusInternalServerError, "internal_error", "failed to issue tokens", nil)
+		c.JSON(http.StatusInternalServerError, httpx.ErrorResponse{Error: "internal_error", Message: "failed to issue tokens"})
 		return
 	}
 
-	httpx.WriteJSON(w, http.StatusOK, pair)
+	c.JSON(http.StatusOK, pair)
 }
 
-func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
+func (h *AuthHandler) Refresh(c *gin.Context) {
 	var req refreshRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httpx.Error(w, http.StatusBadRequest, "invalid_json", "invalid json", nil)
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, httpx.ErrorResponse{Error: "invalid_json", Message: "invalid json"})
 		return
 	}
 	if req.RefreshToken == "" {
-		httpx.Error(w, http.StatusBadRequest, "validation_error", "missing refresh_token", map[string]string{"refresh_token": "required"})
+		c.JSON(http.StatusBadRequest, httpx.ErrorResponse{Error: "validation_error", Message: "missing refresh_token", Fields: map[string]string{"refresh_token": "required"}})
 		return
 	}
 
 	claims, err := auth.ParseRefreshToken(h.Cfg, req.RefreshToken)
 	if err != nil || claims.Subject == "" || claims.ID == "" {
-		httpx.Error(w, http.StatusUnauthorized, "invalid_token", "invalid token", nil)
+		c.JSON(http.StatusUnauthorized, httpx.ErrorResponse{Error: "invalid_token", Message: "invalid token"})
 		return
 	}
 
-	userID, expiresAt, revokedAt, err := h.Repo.GetSession(r.Context(), claims.ID)
+	userID, expiresAt, revokedAt, err := h.Repo.GetSession(c.Request.Context(), claims.ID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			httpx.Error(w, http.StatusUnauthorized, "invalid_token", "invalid token", nil)
+			c.JSON(http.StatusUnauthorized, httpx.ErrorResponse{Error: "invalid_token", Message: "invalid token"})
 			return
 		}
 		log.Printf("refresh: load session failed: %v", err)
-		httpx.Error(w, http.StatusInternalServerError, "internal_error", "failed to load session", nil)
+		c.JSON(http.StatusInternalServerError, httpx.ErrorResponse{Error: "internal_error", Message: "failed to load session"})
 		return
 	}
-	if userID != claims.Subject || revokedAt.Valid || time.Now().After(expiresAt) {
-		httpx.Error(w, http.StatusUnauthorized, "invalid_token", "invalid token", nil)
+	if userID != claims.Subject || revokedAt != nil || time.Now().After(expiresAt) {
+		c.JSON(http.StatusUnauthorized, httpx.ErrorResponse{Error: "invalid_token", Message: "invalid token"})
 		return
 	}
 
-	_ = h.Repo.RevokeSession(r.Context(), claims.ID)
+	_ = h.Repo.RevokeSession(c.Request.Context(), claims.ID)
 
-	pair, err := h.issueTokenPair(r.Context(), userID)
+	pair, err := h.issueTokenPair(c.Request.Context(), userID)
 	if err != nil {
 		log.Printf("refresh: issue tokens failed: %v", err)
-		httpx.Error(w, http.StatusInternalServerError, "internal_error", "failed to issue tokens", nil)
+		c.JSON(http.StatusInternalServerError, httpx.ErrorResponse{Error: "internal_error", Message: "failed to issue tokens"})
 		return
 	}
 
-	httpx.WriteJSON(w, http.StatusOK, pair)
+	c.JSON(http.StatusOK, pair)
 }
 
-func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+func (h *AuthHandler) Logout(c *gin.Context) {
 	var req refreshRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httpx.Error(w, http.StatusBadRequest, "invalid_json", "invalid json", nil)
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, httpx.ErrorResponse{Error: "invalid_json", Message: "invalid json"})
 		return
 	}
 	if req.RefreshToken == "" {
-		httpx.Error(w, http.StatusBadRequest, "validation_error", "missing refresh_token", map[string]string{"refresh_token": "required"})
+		c.JSON(http.StatusBadRequest, httpx.ErrorResponse{Error: "validation_error", Message: "missing refresh_token", Fields: map[string]string{"refresh_token": "required"}})
 		return
 	}
 
 	claims, err := auth.ParseRefreshToken(h.Cfg, req.RefreshToken)
 	if err != nil || claims.ID == "" {
-		httpx.Error(w, http.StatusUnauthorized, "invalid_token", "invalid token", nil)
+		c.JSON(http.StatusUnauthorized, httpx.ErrorResponse{Error: "invalid_token", Message: "invalid token"})
 		return
 	}
 
 	// Best-effort revoke (do not leak existence details)
-	_ = h.Repo.RevokeSession(r.Context(), claims.ID)
-	w.WriteHeader(http.StatusNoContent)
+	_ = h.Repo.RevokeSession(c.Request.Context(), claims.ID)
+	c.Status(http.StatusNoContent)
 }
 
 func (h *AuthHandler) issueTokenPair(ctx context.Context, userID string) (auth.TokenPair, error) {
