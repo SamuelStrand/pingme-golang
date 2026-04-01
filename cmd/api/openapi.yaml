@@ -8,6 +8,7 @@ servers:
 tags:
   - name: auth
   - name: user
+  - name: alert-channels
   - name: health
 
 paths:
@@ -130,6 +131,102 @@ paths:
         "401":
           description: Unauthorized
 
+  /alert-channels:
+    get:
+      tags: [alert-channels]
+      summary: List current user's alert channels
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AlertChannel"
+        "401":
+          description: Unauthorized
+    post:
+      tags: [alert-channels]
+      summary: Create alert channel
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAlertChannelRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertChannel"
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "409":
+          description: Already exists
+
+  /alert-channels/{id}:
+    patch:
+      tags: [alert-channels]
+      summary: Update alert channel
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAlertChannelRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertChannel"
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "404":
+          description: Not found
+        "409":
+          description: Already exists
+    delete:
+      tags: [alert-channels]
+      summary: Delete alert channel
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+        "404":
+          description: Not found
+
 components:
   securitySchemes:
     bearerAuth:
@@ -176,3 +273,45 @@ components:
         created_at:
           type: string
           format: date-time
+    AlertChannel:
+      type: object
+      required: [id, user_id, type, address, enabled, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [telegram, webhook]
+        address:
+          type: string
+        enabled:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+    CreateAlertChannelRequest:
+      type: object
+      required: [type, address]
+      properties:
+        type:
+          type: string
+          enum: [telegram, webhook]
+        address:
+          type: string
+        enabled:
+          type: boolean
+          default: true
+    UpdateAlertChannelRequest:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [telegram, webhook]
+        address:
+          type: string
+        enabled:
+          type: boolean
