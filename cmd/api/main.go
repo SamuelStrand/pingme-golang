@@ -5,14 +5,15 @@ import (
 	"errors"
 	"log"
 	"os"
+
+	"github.com/gin-gonic/gin"
+
 	"pingme-golang/internal/alertchannel"
 	"pingme-golang/internal/auth"
 	"pingme-golang/internal/config"
-
 	"pingme-golang/internal/database"
 	"pingme-golang/internal/handler"
-
-	"github.com/gin-gonic/gin"
+	"pingme-golang/internal/monitor"
 )
 
 //go:embed openapi.yaml
@@ -39,6 +40,9 @@ func main() {
 	alertChannelRepo := &alertchannel.Repository{DB: db}
 	alertChannelService := alertchannel.NewService(alertChannelRepo)
 	alertChannelHandler := &handler.AlertChannelHandler{Service: alertChannelService}
+	monitorRepo := monitor.NewRepository(db)
+	monitorService := monitor.NewService(monitorRepo)
+	targetHandler := &handler.TargetHandler{Service: monitorService}
 
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
@@ -67,6 +71,11 @@ func main() {
 		protected.POST("/alert-channels", alertChannelHandler.Create)
 		protected.PATCH("/alert-channels/:id", alertChannelHandler.Update)
 		protected.DELETE("/alert-channels/:id", alertChannelHandler.Delete)
+		protected.POST("/targets", targetHandler.Create)
+		protected.GET("/targets", targetHandler.List)
+		protected.PATCH("/targets/:id", targetHandler.Update)
+		protected.DELETE("/targets/:id", targetHandler.Delete)
+		protected.GET("/targets/:id/logs", targetHandler.Logs)
 	}
 
 	addr := os.Getenv("HTTP_ADDR")
