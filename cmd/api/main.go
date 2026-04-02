@@ -2,8 +2,10 @@ package main
 
 import (
 	_ "embed"
+	"errors"
 	"log"
 	"os"
+	"pingme-golang/internal/alertchannel"
 	"pingme-golang/internal/auth"
 	"pingme-golang/internal/config"
 
@@ -17,7 +19,9 @@ import (
 var openAPISpec []byte
 
 func main() {
-	_ = config.LoadEnv()
+	if err := config.LoadEnv(); err != nil && !errors.Is(err, os.ErrNotExist) {
+		log.Fatal(err)
+	}
 
 	db, err := database.NewPostgres()
 	if err != nil {
@@ -32,6 +36,9 @@ func main() {
 	authRepo := &auth.Repository{DB: db}
 	authHandler := &handler.AuthHandler{Repo: authRepo, Cfg: authCfg}
 	userHandler := &handler.UserHandler{Repo: authRepo}
+	alertChannelRepo := &alertchannel.Repository{DB: db}
+	alertChannelService := alertchannel.NewService(alertChannelRepo)
+	alertChannelHandler := &handler.AlertChannelHandler{Service: alertChannelService}
 
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
@@ -56,6 +63,10 @@ func main() {
 	protected.Use(auth.AuthMiddleware(authCfg))
 	{
 		protected.GET("/me", userHandler.Me)
+		protected.GET("/alert-channels", alertChannelHandler.List)
+		protected.POST("/alert-channels", alertChannelHandler.Create)
+		protected.PATCH("/alert-channels/:id", alertChannelHandler.Update)
+		protected.DELETE("/alert-channels/:id", alertChannelHandler.Delete)
 	}
 
 	addr := os.Getenv("HTTP_ADDR")

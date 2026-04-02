@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"context"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
@@ -12,7 +14,10 @@ type HealthHandler struct {
 }
 
 func (h *HealthHandler) Health(c *gin.Context) {
-	err := h.DB.Ping()
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 3*time.Second)
+	defer cancel()
+
+	err := h.DB.PingContext(ctx)
 	status := "connected"
 
 	if err != nil {

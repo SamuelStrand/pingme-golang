@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
+	"net/mail"
 	"strings"
 	"time"
 
@@ -41,9 +43,10 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 	req.Email = strings.TrimSpace(strings.ToLower(req.Email))
-	if len(req.Email) < 3 || len(req.Password) < 8 {
+	_, emailErr := mail.ParseAddress(req.Email)
+	if emailErr != nil || len(req.Password) < 8 {
 		fields := map[string]string{}
-		if len(req.Email) < 3 {
+		if emailErr != nil {
 			fields["email"] = "must be a valid email"
 		}
 		if len(req.Password) < 8 {
@@ -149,7 +152,15 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 		return
 	}
 
-	_ = h.Repo.RevokeSession(c.Request.Context(), claims.ID)
+	if err := h.Repo.RevokeSession(c.Request.Context(), claims.ID); err != nil {
+		if errors.Is(err, auth.ErrSessionNotFound) {
+			c.JSON(http.StatusUnauthorized, httpx.ErrorResponse{Error: "invalid_token", Message: "invalid token"})
+			return
+		}
+		log.Printf("refresh: revoke session failed: %v", err)
+		c.JSON(http.StatusInternalServerError, httpx.ErrorResponse{Error: "internal_error", Message: "failed to rotate session"})
+		return
+	}
 
 	pair, err := h.issueTokenPair(c.Request.Context(), userID)
 	if err != nil {
@@ -179,7 +190,12 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	}
 
 	// Best-effort revoke (do not leak existence details)
-	_ = h.Repo.RevokeSession(c.Request.Context(), claims.ID)
+	err = h.Repo.RevokeSession(c.Request.Context(), claims.ID)
+	if err != nil && !errors.Is(err, auth.ErrSessionNotFound) {
+		log.Printf("logout: revoke session failed: %v", err)
+		c.JSON(http.StatusInternalServerError, httpx.ErrorResponse{Error: "internal_error", Message: "failed to logout"})
+		return
+	}
 	c.Status(http.StatusNoContent)
 }
 
@@ -196,6 +212,13 @@ func (h *AuthHandler) issueTokenPair(ctx context.Context, userID string) (auth.T
 
 	refreshToken, err := auth.NewRefreshToken(h.Cfg, userID, sessionID)
 	if err != nil {
+		revokeErr := h.Repo.RevokeSession(ctx, sessionID)
+		if revokeErr != nil && !errors.Is(revokeErr, auth.ErrSessionNotFound) {
+			return auth.TokenPair{}, errors.Join(
+				err,
+				fmt.Errorf("revoke refresh session %q: %w", sessionID, revokeErr),
+			)
+		}
 		return auth.TokenPair{}, err
 	}
 
