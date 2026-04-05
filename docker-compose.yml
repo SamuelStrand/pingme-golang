@@ -1,0 +1,52 @@
+services:
+  db:
+    image: postgres:17
+    container_name: pingme
+    environment:
+      POSTGRES_DB: pingme
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d pingme"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # Host port 5433 avoids conflict with a local PostgreSQL install on 5432 (Windows/macOS).
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  app:
+    build: .
+    container_name: pingme-app
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL}
+      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL}
+      HTTP_ADDR: ${HTTP_ADDR}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  worker:
+    build: .
+    container_name: pingme-worker
+    command: ["./worker"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      WORKER_COUNT: ${WORKER_COUNT}
+      WORKER_BATCH_SIZE: ${WORKER_BATCH_SIZE}
+      WORKER_QUEUE_SIZE: ${WORKER_QUEUE_SIZE}
+      SCHEDULER_TICK: ${SCHEDULER_TICK}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
