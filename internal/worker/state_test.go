@@ -29,6 +29,17 @@ func TestEvaluateStateTransition(t *testing.T) {
 			wantEvent:    EventTypeNone,
 		},
 		{
+			name: "failure from unknown stays unknown",
+			monitor: models.Monitor{
+				LastStatus:          "unknown",
+				ConsecutiveFailures: 0,
+			},
+			result:       CheckResult{Success: false},
+			wantStatus:   "unknown",
+			wantFailures: 1,
+			wantEvent:    EventTypeNone,
+		},
+		{
 			name: "single failure keeps monitor up",
 			monitor: models.Monitor{
 				LastStatus:          "up",
@@ -72,6 +83,39 @@ func TestEvaluateStateTransition(t *testing.T) {
 			wantFailures: 4,
 			wantEvent:    EventTypeNone,
 		},
+		{
+			name: "success when already up does not trigger event",
+			monitor: models.Monitor{
+				LastStatus:          "up",
+				ConsecutiveFailures: 0,
+			},
+			result:       CheckResult{Success: true},
+			wantStatus:   "up",
+			wantFailures: 0,
+			wantEvent:    EventTypeNone,
+		},
+		{
+			name: "success resets failures before reaching threshold",
+			monitor: models.Monitor{
+				LastStatus:          "up",
+				ConsecutiveFailures: 2,
+			},
+			result:       CheckResult{Success: true},
+			wantStatus:   "up",
+			wantFailures: 0,
+			wantEvent:    EventTypeNone,
+		},
+		{
+			name: "success after single failure resets counter",
+			monitor: models.Monitor{
+				LastStatus:          "up",
+				ConsecutiveFailures: 1,
+			},
+			result:       CheckResult{Success: true},
+			wantStatus:   "up",
+			wantFailures: 0,
+			wantEvent:    EventTypeNone,
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -80,12 +124,15 @@ func TestEvaluateStateTransition(t *testing.T) {
 			t.Parallel()
 
 			got := evaluateStateTransition(testCase.monitor, testCase.result)
+
 			if got.nextStatus != testCase.wantStatus {
 				t.Fatalf("nextStatus = %q, want %q", got.nextStatus, testCase.wantStatus)
 			}
+
 			if got.nextFailures != testCase.wantFailures {
 				t.Fatalf("nextFailures = %d, want %d", got.nextFailures, testCase.wantFailures)
 			}
+
 			if got.eventType != testCase.wantEvent {
 				t.Fatalf("eventType = %q, want %q", got.eventType, testCase.wantEvent)
 			}
