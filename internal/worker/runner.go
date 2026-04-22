@@ -11,14 +11,20 @@ import (
 	"pingme-golang/internal/models"
 )
 
+type RepositoryPort interface {
+	ClaimDueMonitors(ctx context.Context, now time.Time, limit int) ([]models.Monitor, error)
+	ApplyCheckResult(ctx context.Context, monitorID string, result CheckResult) (Event, error)
+	ListEnabledAlertChannels(ctx context.Context, userID string) ([]models.AlertChannel, error)
+}
+
 type Runner struct {
 	config   Config
-	repo     *Repository
+	repo     RepositoryPort
 	checker  Checker
 	notifier Notifier
 }
 
-func NewRunner(config Config, repo *Repository, checker Checker, notifier Notifier) *Runner {
+func NewRunner(config Config, repo RepositoryPort, checker Checker, notifier Notifier) *Runner {
 	return &Runner{
 		config:   config,
 		repo:     repo,
