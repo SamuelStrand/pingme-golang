@@ -74,8 +74,8 @@ func NewRepository(db *sqlx.DB) *Repository {
 func (r *Repository) Create(ctx context.Context, params CreateParams) (models.Monitor, error) {
 	var item models.Monitor
 	err := r.DB.GetContext(ctx, &item, fmt.Sprintf(`
-		insert into monitors (user_id, url, name, interval_seconds, timeout_seconds, enabled)
-		values ($1, $2, $3, $4, $5, $6)
+		insert into monitors (user_id, url, name, interval_seconds, timeout_seconds, enabled, next_check_at)
+		values ($1, $2, $3, $4, $5, $6, now())
 		returning %s
 	`, monitorColumns), params.UserID, params.URL, params.Name, params.Interval, DefaultTimeoutInSec, params.Enabled)
 	if err != nil {

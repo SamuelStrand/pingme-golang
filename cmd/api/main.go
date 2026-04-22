@@ -82,7 +82,6 @@ func main() {
 	if addr == "" {
 		addr = ":8080"
 	}
-
 	log.Printf("Server started on %s", addr)
 	log.Fatal(r.Run(addr))
 }

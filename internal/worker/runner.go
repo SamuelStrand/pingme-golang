@@ -128,6 +128,7 @@ func (r *Runner) runWorker(ctx context.Context, jobs <-chan models.Monitor, work
 
 func (r *Runner) processMonitor(ctx context.Context, monitor models.Monitor) error {
 	result := r.checker.Check(ctx, monitor)
+	result.CheckedAt = time.Now().UTC()
 
 	event, err := r.repo.ApplyCheckResult(ctx, monitor.ID, result)
 	if err != nil {
