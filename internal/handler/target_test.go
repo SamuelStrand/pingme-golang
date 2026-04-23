@@ -60,6 +60,10 @@ func (s *stubTargetService) ListLogs(_ context.Context, input monitor.ListLogsIn
 	return s.listLogsResult, s.listLogsErr
 }
 
+func (s *stubTargetService) GetMonitorStats(ctx context.Context, targetID, userID string, from, to time.Time) (monitor.MonitorStats, []monitor.TimelinePoint, error) {
+	return monitor.MonitorStats{}, []monitor.TimelinePoint{}, nil
+}
+
 func TestTargetHandlerCreateDefaultsEnabled(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
