@@ -57,6 +57,23 @@ export type TargetLogListResponse = {
   total: number;
 };
 
+export type TargetTimelinePoint = {
+  timestamp: string;
+  success: boolean;
+  response_time_ms: number;
+};
+
+export type TargetStatsResponse = {
+  target_id: string;
+  from: string;
+  to: string;
+  uptime_percent: number;
+  avg_response_ms: number;
+  total_checks: number;
+  failed_checks: number;
+  timeline: TargetTimelinePoint[];
+};
+
 export type AlertChannelType = "telegram" | "webhook";
 
 export type AlertChannel = {

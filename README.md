@@ -26,6 +26,7 @@ PingMe is a Go uptime monitoring backend. Users can register, create URL targets
 cmd/api/             API server and OpenAPI spec
 cmd/worker/          Background monitor checker
 cmd/bot/             Telegram bot process
+frontend/            React dashboard for auth, targets, logs, analytics, and alerts
 internal/            Application packages
 migrations/          PostgreSQL migrations
 docker-compose.yml   Local PostgreSQL, API, worker, and bot services
@@ -146,6 +147,17 @@ Run the Telegram bot, if needed:
 TELEGRAM_BOT_TOKEN='<your-bot-token>' go run ./cmd/bot
 ```
 
+Run the React frontend in another terminal:
+
+```sh
+cd frontend
+npm install
+npm run dev
+```
+
+The Vite dev server runs on `http://localhost:5173` and proxies `/api` requests to `http://localhost:8080`.
+If you need a different API origin, set `VITE_API_BASE_URL`.
+
 ## API Overview
 
 Public endpoints:
@@ -234,6 +246,13 @@ Run tests:
 
 ```sh
 go test ./...
+```
+
+Build the frontend:
+
+```sh
+cd frontend
+npm run build
 ```
 
 Build binaries:

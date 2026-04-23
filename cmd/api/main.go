@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -49,6 +50,9 @@ func main() {
 	targetHandler := &handler.TargetHandler{Service: monitorService}
 
 	r := gin.New()
+	if err := r.SetTrustedProxies(loadTrustedProxies()); err != nil {
+		log.Fatal(err)
+	}
 	r.Use(gin.Logger(), gin.Recovery())
 
 	r.GET("/health", healthHandler.Health)
@@ -90,4 +94,24 @@ func main() {
 	}
 	log.Printf("Server started on %s", addr)
 	log.Fatal(r.Run(addr))
+}
+
+func loadTrustedProxies() []string {
+	raw := strings.TrimSpace(os.Getenv("TRUSTED_PROXIES"))
+	if raw == "" {
+		return nil
+	}
+
+	parts := strings.Split(raw, ",")
+	proxies := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if proxy := strings.TrimSpace(part); proxy != "" {
+			proxies = append(proxies, proxy)
+		}
+	}
+	if len(proxies) == 0 {
+		return nil
+	}
+
+	return proxies
 }

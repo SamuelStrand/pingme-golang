@@ -7,6 +7,7 @@ import {
   Target,
   TargetListResponse,
   TargetLogListResponse,
+  TargetStatsResponse,
   TelegramLinkTokenResponse,
   TokenPair,
   User
@@ -39,6 +40,8 @@ type AlertDraft = {
   address: string;
   enabled: boolean;
 };
+
+type StatsRange = "24h" | "7d";
 
 type Notice = {
   type: "success" | "error";
@@ -93,6 +96,9 @@ function App() {
   const [logFrom, setLogFrom] = useState("");
   const [logTo, setLogTo] = useState("");
   const [logsLoading, setLogsLoading] = useState(false);
+  const [targetStats, setTargetStats] = useState<TargetStatsResponse | null>(null);
+  const [statsRange, setStatsRange] = useState<StatsRange>("24h");
+  const [statsLoading, setStatsLoading] = useState(false);
 
   const [channels, setChannels] = useState<AlertChannel[]>([]);
   const [alertDraft, setAlertDraft] = useState<AlertDraft>(emptyAlertDraft);
@@ -117,6 +123,7 @@ function App() {
     setChannels([]);
     setSelectedTargetId(null);
     setLogs(initialLogsPage);
+    setTargetStats(null);
     setTelegramLink(null);
     setView("overview");
   }, []);
@@ -180,6 +187,7 @@ function App() {
       if (selectedTargetId && !nextTargets.items.some((target) => target.id === selectedTargetId)) {
         setSelectedTargetId(null);
         setLogs(initialLogsPage);
+        setTargetStats(null);
       }
     },
     [authedRequest, selectedTargetId]
@@ -224,6 +232,24 @@ function App() {
     [authedRequest, logFrom, logPage, logTo, selectedTargetId]
   );
 
+  const fetchTargetStats = useCallback(
+    async (targetId = selectedTargetId, range = statsRange) => {
+      if (!targetId) {
+        return;
+      }
+      setStatsLoading(true);
+      try {
+        const nextStats = await authedRequest<TargetStatsResponse>(
+          `/targets/${targetId}/stats?range=${encodeURIComponent(range)}`
+        );
+        setTargetStats(nextStats);
+      } finally {
+        setStatsLoading(false);
+      }
+    },
+    [authedRequest, selectedTargetId, statsRange]
+  );
+
   const loadDashboard = useCallback(async () => {
     if (!tokens) {
       setBooting(false);
@@ -245,13 +271,16 @@ function App() {
 
   useEffect(() => {
     void loadDashboard();
-  }, [tokens]);
+  }, [loadDashboard]);
 
   useEffect(() => {
-    if (selectedTargetId) {
-      void fetchLogs(selectedTargetId, 1);
+    if (!selectedTargetId) {
+      setTargetStats(null);
+      return;
     }
-  }, [selectedTargetId]);
+    void fetchLogs(selectedTargetId, 1).catch(showError);
+    void fetchTargetStats(selectedTargetId, statsRange).catch(showError);
+  }, [fetchLogs, fetchTargetStats, selectedTargetId, showError, statsRange]);
 
   useEffect(() => {
     if (!notice) {
@@ -357,6 +386,7 @@ function App() {
       if (selectedTargetId === target.id) {
         setSelectedTargetId(null);
         setLogs(initialLogsPage);
+        setTargetStats(null);
       }
       await fetchTargets(targetPage);
     } catch (error) {
@@ -571,7 +601,7 @@ function App() {
               type="button"
               title="Refresh data"
               aria-label="Refresh data"
-              onClick={() => void loadDashboard()}
+              onClick={() => void loadDashboard().catch(showError)}
               disabled={booting}
             >
               <RefreshIcon />
@@ -710,7 +740,7 @@ function App() {
                         type="button"
                         title="Refresh targets"
                         aria-label="Refresh targets"
-                        onClick={() => void fetchTargets(targetPage)}
+                        onClick={() => void fetchTargets(targetPage).catch(showError)}
                       >
                         <RefreshIcon />
                       </button>
@@ -726,8 +756,26 @@ function App() {
                   <Pagination
                     page={targetPage}
                     pageCount={targetPageCount}
-                    onPrev={() => void fetchTargets(Math.max(1, targetPage - 1))}
-                    onNext={() => void fetchTargets(Math.min(targetPageCount, targetPage + 1))}
+                    onPrev={() => void fetchTargets(Math.max(1, targetPage - 1)).catch(showError)}
+                    onNext={() =>
+                      void fetchTargets(Math.min(targetPageCount, targetPage + 1)).catch(showError)
+                    }
+                  />
+                </div>
+
+                <div className="panel wide-panel">
+                  <TargetAnalyticsPanel
+                    target={selectedTarget}
+                    stats={targetStats}
+                    loading={statsLoading}
+                    range={statsRange}
+                    onRangeChange={setStatsRange}
+                    onRefresh={() => {
+                      if (!selectedTarget) {
+                        return;
+                      }
+                      void fetchTargetStats(selectedTarget.id, statsRange).catch(showError);
+                    }}
                   />
                 </div>
 
@@ -741,7 +789,7 @@ function App() {
                           type="button"
                           title="Refresh logs"
                           aria-label="Refresh logs"
-                          onClick={() => void fetchLogs(selectedTarget.id, logPage)}
+                          onClick={() => void fetchLogs(selectedTarget.id, logPage).catch(showError)}
                           disabled={logsLoading}
                         >
                           <RefreshIcon />
@@ -771,7 +819,7 @@ function App() {
                         <button
                           className="small-button"
                           type="button"
-                          onClick={() => void fetchLogs(selectedTarget.id, 1)}
+                          onClick={() => void fetchLogs(selectedTarget.id, 1).catch(showError)}
                         >
                           <CheckIcon />
                           Apply
@@ -781,8 +829,12 @@ function App() {
                       <Pagination
                         page={logPage}
                         pageCount={logPageCount}
-                        onPrev={() => void fetchLogs(selectedTarget.id, Math.max(1, logPage - 1))}
-                        onNext={() => void fetchLogs(selectedTarget.id, Math.min(logPageCount, logPage + 1))}
+                        onPrev={() =>
+                          void fetchLogs(selectedTarget.id, Math.max(1, logPage - 1)).catch(showError)
+                        }
+                        onNext={() =>
+                          void fetchLogs(selectedTarget.id, Math.min(logPageCount, logPage + 1)).catch(showError)
+                        }
                       />
                     </>
                   ) : (
@@ -870,7 +922,7 @@ function App() {
                         type="button"
                         title="Refresh channels"
                         aria-label="Refresh channels"
-                        onClick={() => void fetchChannels()}
+                        onClick={() => void fetchChannels().catch(showError)}
                       >
                         <RefreshIcon />
                       </button>
@@ -903,7 +955,7 @@ function App() {
                       <LinkIcon />
                       Generate link
                     </button>
-                    <button className="ghost-button" type="button" onClick={() => void fetchMe()}>
+                    <button className="ghost-button" type="button" onClick={() => void fetchMe().catch(showError)}>
                       <RefreshIcon />
                       Refresh user
                     </button>
@@ -985,7 +1037,7 @@ function Metric({
   accent
 }: {
   label: string;
-  value: number;
+  value: number | string;
   accent?: "good" | "bad" | "muted";
 }) {
   return (
@@ -993,6 +1045,86 @@ function Metric({
       <span>{label}</span>
       <strong>{value}</strong>
     </div>
+  );
+}
+
+function TargetAnalyticsPanel({
+  target,
+  stats,
+  loading,
+  range,
+  onRangeChange,
+  onRefresh
+}: {
+  target: Target | null;
+  stats: TargetStatsResponse | null;
+  loading: boolean;
+  range: StatsRange;
+  onRangeChange: (range: StatsRange) => void;
+  onRefresh: () => void;
+}) {
+  const action =
+    target &&
+    (
+      <div className="analytics-toolbar">
+        <div className="range-switch" role="tablist" aria-label="Analytics range">
+          <button
+            type="button"
+            className={range === "24h" ? "range-button active" : "range-button"}
+            onClick={() => onRangeChange("24h")}
+          >
+            24h
+          </button>
+          <button
+            type="button"
+            className={range === "7d" ? "range-button active" : "range-button"}
+            onClick={() => onRangeChange("7d")}
+          >
+            7d
+          </button>
+        </div>
+        <button
+          className="icon-button"
+          type="button"
+          title="Refresh analytics"
+          aria-label="Refresh analytics"
+          onClick={onRefresh}
+          disabled={loading}
+        >
+          <RefreshIcon />
+        </button>
+      </div>
+    );
+
+  return (
+    <>
+      <PanelHeader
+        title={target ? `Analytics: ${displayTargetName(target)}` : "Analytics"}
+        action={action}
+      />
+      {!target ? (
+        <EmptyState title="Select a target to see analytics" />
+      ) : !stats ? (
+        <EmptyState title={loading ? "Loading analytics" : "No analytics yet"} />
+      ) : (
+        <div className="analytics-shell">
+          <div className="analytics-metrics">
+            <Metric
+              label="Uptime"
+              value={`${formatPercent(stats.uptime_percent)}%`}
+              accent={accentForUptime(stats.uptime_percent)}
+            />
+            <Metric label="Avg latency" value={`${Math.round(stats.avg_response_ms)} ms`} />
+            <Metric label="Checks" value={stats.total_checks} />
+            <Metric label="Failures" value={stats.failed_checks} accent={stats.failed_checks > 0 ? "bad" : "good"} />
+          </div>
+          <StatsTimeline stats={stats} />
+          <div className="analytics-footnote">
+            Range {formatDate(stats.from)} to {formatDate(stats.to)}
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -1119,6 +1251,40 @@ function LogsTable({ logs, loading }: { logs: TargetLogListResponse["items"]; lo
   );
 }
 
+function StatsTimeline({ stats }: { stats: TargetStatsResponse }) {
+  if (stats.timeline.length === 0) {
+    return <EmptyState title="No checks recorded for this range" />;
+  }
+
+  const peakResponseTime = Math.max(
+    ...stats.timeline.map((point) => Math.max(point.response_time_ms, 1)),
+    1
+  );
+
+  return (
+    <div className="timeline-card">
+      <div className="timeline-grid" role="img" aria-label="Target response timeline">
+        {stats.timeline.map((point) => {
+          const height = Math.max(18, Math.round((Math.max(point.response_time_ms, 1) / peakResponseTime) * 92));
+          const label = `${formatDate(point.timestamp)} - ${point.success ? "Success" : "Failure"} - ${point.response_time_ms} ms`;
+          return (
+            <span
+              key={`${point.timestamp}-${point.response_time_ms}-${point.success}`}
+              className={point.success ? "timeline-bar success" : "timeline-bar failure"}
+              style={{ height: `${height}px` }}
+              title={label}
+            />
+          );
+        })}
+      </div>
+      <div className="timeline-meta">
+        <span>{stats.timeline.length} checks shown</span>
+        <span>{stats.failed_checks === 0 ? "No failures in range" : `${stats.failed_checks} failed checks`}</span>
+      </div>
+    </div>
+  );
+}
+
 function ChannelList({
   channels,
   onEdit,
@@ -1235,6 +1401,23 @@ function titleForView(view: View) {
 
 function displayTargetName(target: Target) {
   return target.name || target.url;
+}
+
+function accentForUptime(value: number): "good" | "bad" | "muted" {
+  if (value >= 99) {
+    return "good";
+  }
+  if (value >= 95) {
+    return "muted";
+  }
+  return "bad";
+}
+
+function formatPercent(value: number) {
+  return new Intl.NumberFormat(undefined, {
+    minimumFractionDigits: value % 1 === 0 ? 0 : 1,
+    maximumFractionDigits: 1
+  }).format(value);
 }
 
 function formatDate(value: string) {
