@@ -14,6 +14,7 @@ import (
 	"pingme-golang/internal/database"
 	"pingme-golang/internal/handler"
 	"pingme-golang/internal/monitor"
+	"pingme-golang/internal/telegramlink"
 )
 
 //go:embed openapi.yaml
@@ -40,6 +41,9 @@ func main() {
 	alertChannelRepo := &alertchannel.Repository{DB: db}
 	alertChannelService := alertchannel.NewService(alertChannelRepo)
 	alertChannelHandler := &handler.AlertChannelHandler{Service: alertChannelService}
+	telegramLinkRepo := &telegramlink.PostgresRepository{DB: db}
+	telegramLinkService := telegramlink.NewService(telegramLinkRepo, telegramlink.LoadConfigFromEnv())
+	telegramLinkHandler := &handler.TelegramLinkHandler{Service: telegramLinkService}
 	monitorRepo := monitor.NewRepository(db)
 	monitorService := monitor.NewService(monitorRepo)
 	targetHandler := &handler.TargetHandler{Service: monitorService}
@@ -71,6 +75,7 @@ func main() {
 		protected.POST("/alert-channels", alertChannelHandler.Create)
 		protected.PATCH("/alert-channels/:id", alertChannelHandler.Update)
 		protected.DELETE("/alert-channels/:id", alertChannelHandler.Delete)
+		protected.POST("/telegram/link-token", telegramLinkHandler.CreateLinkToken)
 		protected.POST("/targets", targetHandler.Create)
 		protected.GET("/targets", targetHandler.List)
 		protected.PATCH("/targets/:id", targetHandler.Update)

@@ -29,6 +29,7 @@ services:
       JWT_ACCESS_TTL: ${JWT_ACCESS_TTL}
       JWT_REFRESH_TTL: ${JWT_REFRESH_TTL}
       HTTP_ADDR: ${HTTP_ADDR}
+      TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME}
     depends_on:
       db:
         condition: service_healthy
@@ -43,6 +44,17 @@ services:
       WORKER_BATCH_SIZE: ${WORKER_BATCH_SIZE}
       WORKER_QUEUE_SIZE: ${WORKER_QUEUE_SIZE}
       SCHEDULER_TICK: ${SCHEDULER_TICK}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  bot:
+    build: .
+    container_name: pingme-bot
+    command: ["./bot"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
     depends_on:
       db:
