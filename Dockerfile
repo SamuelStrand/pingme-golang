@@ -9,5 +9,6 @@ COPY . .
 
 RUN go build -o api ./cmd/api/main.go
 RUN go build -o worker ./cmd/worker/main.go
+RUN go build -o bot ./cmd/bot/main.go
 
 CMD ["./api"]

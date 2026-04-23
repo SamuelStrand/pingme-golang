@@ -9,6 +9,7 @@ tags:
   - name: auth
   - name: user
   - name: alert-channels
+  - name: telegram
   - name: targets
   - name: health
 
@@ -227,6 +228,25 @@ paths:
           description: Unauthorized
         "404":
           description: Not found
+
+  /telegram/link-token:
+    post:
+      tags: [telegram]
+      summary: Create Telegram bot link token
+      description: Returns a one-time deep link for connecting the current user's Telegram chat.
+      security:
+        - bearerAuth: []
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TelegramLinkTokenResponse"
+        "401":
+          description: Unauthorized
+        "500":
+          description: Telegram bot is not configured
 
   /targets:
     get:
@@ -569,6 +589,16 @@ components:
           type: string
         enabled:
           type: boolean
+    TelegramLinkTokenResponse:
+      type: object
+      required: [link_url, expires_at]
+      properties:
+        link_url:
+          type: string
+          format: uri
+        expires_at:
+          type: string
+          format: date-time
     TargetStatus:
       type: string
       enum: [unknown, up, down]
@@ -676,39 +706,3 @@ components:
           type: integer
         total:
           type: integer
-
-    TargetStatsResponse:
-      type: object
-      properties:
-        monitor_id:
-          type: string
-          format: uuid
-        from:
-          type: string
-          format: date-time
-        to:
-          type: string
-          format: date-time
-        uptime_percent:
-          type: number
-          example: 99.5
-        avg_response_ms:
-          type: number
-          example: 120
-        total_checks:
-          type: integer
-        failed_checks:
-          type: integer
-        timeline:
-          type: array
-          items:
-            type: object
-            properties:
-              timestamp:
-                type: string
-                format: date-time
-              success:
-                type: boolean
-              response_time_ms:
-                type: integer
-
