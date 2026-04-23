@@ -33,6 +33,7 @@ type targetService interface {
 	Update(ctx context.Context, input monitor.UpdateInput) (models.Monitor, error)
 	Delete(ctx context.Context, id string, userID string) error
 	ListLogs(ctx context.Context, input monitor.ListLogsInput) (monitor.CheckLogPage, error)
+	GetMonitorStats(ctx context.Context, targetID, userID string, from, to time.Time) (monitor.MonitorStats, []monitor.TimelinePoint, error)
 }
 
 type TargetHandler struct {
@@ -395,4 +396,89 @@ func parseRFC3339Query(raw string) (*time.Time, error) {
 	}
 
 	return nil, lastErr
+}
+
+func (h *TargetHandler) GetMonitorStats(c *gin.Context) {
+	userID, ok := auth.UserIDFromGin(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, httpx.ErrorResponse{
+			Error:   "unauthorized",
+			Message: "unauthorized",
+		})
+		return
+	}
+
+	targetID := c.Param("id")
+
+	now := time.Now().UTC()
+	var from, to time.Time
+
+	fromStr := c.Query("from")
+	toStr := c.Query("to")
+
+	if fromStr != "" || toStr != "" {
+		parsedFrom, err1 := time.Parse(time.RFC3339, fromStr)
+		parsedTo, err2 := time.Parse(time.RFC3339, toStr)
+
+		if err1 != nil || err2 != nil {
+			c.JSON(http.StatusBadRequest, httpx.ErrorResponse{
+				Error:   "invalid_time_format",
+				Message: "from/to must be RFC3339",
+			})
+			return
+		}
+
+		from = parsedFrom
+		to = parsedTo
+	}
+
+	if from.IsZero() {
+		rangeParam := c.DefaultQuery("range", "24h")
+
+		duration, err := time.ParseDuration(rangeParam)
+		if err != nil {
+			if rangeParam == "7d" {
+				duration = 7 * 24 * time.Hour
+			} else {
+				duration = 24 * time.Hour
+			}
+		}
+
+		from = now.Add(-duration)
+		to = now
+	}
+
+	if from.After(to) {
+		c.JSON(http.StatusBadRequest, httpx.ErrorResponse{
+			Error:   "invalid_range",
+			Message: "from must be before to",
+		})
+		return
+	}
+
+	stats, timeline, err := h.Service.GetMonitorStats(c.Request.Context(), targetID, userID, from, to)
+	if err != nil {
+		writeTargetError(c, err)
+		return
+	}
+
+	uptime := 0.0
+	if stats.TotalChecks > 0 {
+		uptime = float64(stats.SuccessCount) / float64(stats.TotalChecks) * 100
+	}
+
+	if timeline == nil {
+		timeline = []monitor.TimelinePoint{}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"target_id":       targetID,
+		"from":            from,
+		"to":              to,
+		"uptime_percent":  uptime,
+		"avg_response_ms": stats.AvgResponseMs,
+		"total_checks":    stats.TotalChecks,
+		"failed_checks":   stats.TotalChecks - stats.SuccessCount,
+		"timeline":        timeline,
+	})
 }

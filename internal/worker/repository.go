@@ -43,11 +43,14 @@ func (r *Repository) ClaimDueMonitors(ctx context.Context, now time.Time, limit 
 		return nil, fmt.Errorf("begin claim monitors tx: %w", err)
 	}
 	defer tx.Rollback()
-
 	rows, err := tx.QueryxContext(ctx, fmt.Sprintf(`
 		select %s
 		from monitors
-		where enabled = true and next_check_at <= $1
+		where enabled = true 
+		and (
+		    last_checked_at is null
+			or next_check_at <= $1
+)
 		order by next_check_at asc
 		limit $2
 		for update skip locked

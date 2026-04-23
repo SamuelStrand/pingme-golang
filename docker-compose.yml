@@ -16,6 +16,19 @@ services:
       - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+  migrate:
+    image: migrate/migrate
+    container_name: pingme-migrate
+    volumes:
+      - ./migrations:/migrations
+    command: [
+      "-path", "/migrations",
+      "-database", "postgres://postgres:postgres@db:5432/pingme?sslmode=disable",
+      "up"
+    ]
+    depends_on:
+      db:
+        condition: service_healthy
 
   app:
     build: .
@@ -30,8 +43,8 @@ services:
       JWT_REFRESH_TTL: ${JWT_REFRESH_TTL}
       HTTP_ADDR: ${HTTP_ADDR}
     depends_on:
-      db:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   worker:
     build: .
@@ -45,8 +58,8 @@ services:
       SCHEDULER_TICK: ${SCHEDULER_TICK}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
     depends_on:
-      db:
-        condition: service_healthy
+      app:
+        condition: service_started
 
 volumes:
   pgdata:

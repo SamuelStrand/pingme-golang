@@ -59,6 +59,10 @@ func (s *stubRepository) ListLogs(_ context.Context, params ListLogsParams) ([]m
 	return s.listLogsResult, s.listLogsTotal, s.listLogsErr
 }
 
+func (r *stubRepository) GetMonitorStats(ctx context.Context, targetID, userID string, from, to time.Time) (MonitorStats, []TimelinePoint, error) {
+	return MonitorStats{}, []TimelinePoint{}, nil
+}
+
 func TestServiceCreateNormalizesInput(t *testing.T) {
 	t.Parallel()
 

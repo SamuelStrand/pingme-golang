@@ -435,6 +435,40 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /targets/{id}/stats:
+    get:
+      tags: [ targets ]
+      summary: Get target analytics
+      description: Returns uptime percentage, average response time and timeline of checks.
+      security:
+        - bearerAuth: [ ]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TargetStatsResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -642,4 +676,39 @@ components:
           type: integer
         total:
           type: integer
+
+    TargetStatsResponse:
+      type: object
+      properties:
+        monitor_id:
+          type: string
+          format: uuid
+        from:
+          type: string
+          format: date-time
+        to:
+          type: string
+          format: date-time
+        uptime_percent:
+          type: number
+          example: 99.5
+        avg_response_ms:
+          type: number
+          example: 120
+        total_checks:
+          type: integer
+        failed_checks:
+          type: integer
+        timeline:
+          type: array
+          items:
+            type: object
+            properties:
+              timestamp:
+                type: string
+                format: date-time
+              success:
+                type: boolean
+              response_time_ms:
+                type: integer
 
