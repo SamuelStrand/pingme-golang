@@ -76,6 +76,7 @@ func main() {
 		protected.PATCH("/targets/:id", targetHandler.Update)
 		protected.DELETE("/targets/:id", targetHandler.Delete)
 		protected.GET("/targets/:id/logs", targetHandler.Logs)
+		protected.GET("/targets/:id/stats", targetHandler.GetMonitorStats)
 	}
 
 	addr := os.Getenv("HTTP_ADDR")
