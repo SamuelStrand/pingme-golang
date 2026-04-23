@@ -34,6 +34,7 @@ type repository interface {
 	Update(ctx context.Context, params UpdateParams) (models.Monitor, error)
 	Delete(ctx context.Context, id string, userID string) error
 	ListLogs(ctx context.Context, params ListLogsParams) ([]models.CheckLog, int, error)
+	GetMonitorStats(ctx context.Context, targetID, userID string, from, to time.Time) (MonitorStats, []TimelinePoint, error)
 }
 
 type Service struct {
@@ -88,6 +89,10 @@ type CheckLogPage struct {
 
 func NewService(repo repository) *Service {
 	return &Service{repo: repo}
+}
+
+func (s *Service) GetMonitorStats(ctx context.Context, targetID, userID string, from, to time.Time) (MonitorStats, []TimelinePoint, error) {
+	return s.repo.GetMonitorStats(ctx, targetID, userID, from, to)
 }
 
 func (s *Service) Create(ctx context.Context, input CreateInput) (models.Monitor, error) {
