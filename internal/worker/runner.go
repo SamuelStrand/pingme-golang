@@ -11,14 +11,20 @@ import (
 	"pingme-golang/internal/models"
 )
 
+type RepositoryPort interface {
+	ClaimDueMonitors(ctx context.Context, now time.Time, limit int) ([]models.Monitor, error)
+	ApplyCheckResult(ctx context.Context, monitorID string, result CheckResult) (Event, error)
+	ListEnabledAlertChannels(ctx context.Context, userID string) ([]models.AlertChannel, error)
+}
+
 type Runner struct {
 	config   Config
-	repo     *Repository
+	repo     RepositoryPort
 	checker  Checker
 	notifier Notifier
 }
 
-func NewRunner(config Config, repo *Repository, checker Checker, notifier Notifier) *Runner {
+func NewRunner(config Config, repo RepositoryPort, checker Checker, notifier Notifier) *Runner {
 	return &Runner{
 		config:   config,
 		repo:     repo,
@@ -128,6 +134,7 @@ func (r *Runner) runWorker(ctx context.Context, jobs <-chan models.Monitor, work
 
 func (r *Runner) processMonitor(ctx context.Context, monitor models.Monitor) error {
 	result := r.checker.Check(ctx, monitor)
+	result.CheckedAt = time.Now().UTC()
 
 	event, err := r.repo.ApplyCheckResult(ctx, monitor.ID, result)
 	if err != nil {

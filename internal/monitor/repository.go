@@ -67,6 +67,18 @@ type ListLogsParams struct {
 	To        *time.Time
 }
 
+type MonitorStats struct {
+	TotalChecks   int     `db:"total"`
+	SuccessCount  int     `db:"success_count"`
+	AvgResponseMs float64 `db:"avg_response"`
+}
+
+type TimelinePoint struct {
+	Timestamp      time.Time `db:"checked_at" json:"timestamp"`
+	Success        bool      `db:"success" json:"success"`
+	ResponseTimeMs int       `db:"response_time_ms" json:"response_time_ms"`
+}
+
 func NewRepository(db *sqlx.DB) *Repository {
 	return &Repository{DB: db}
 }
@@ -74,8 +86,8 @@ func NewRepository(db *sqlx.DB) *Repository {
 func (r *Repository) Create(ctx context.Context, params CreateParams) (models.Monitor, error) {
 	var item models.Monitor
 	err := r.DB.GetContext(ctx, &item, fmt.Sprintf(`
-		insert into monitors (user_id, url, name, interval_seconds, timeout_seconds, enabled)
-		values ($1, $2, $3, $4, $5, $6)
+		insert into monitors (user_id, url, name, interval_seconds, timeout_seconds, enabled, next_check_at)
+		values ($1, $2, $3, $4, $5, $6, now())
 		returning %s
 	`, monitorColumns), params.UserID, params.URL, params.Name, params.Interval, DefaultTimeoutInSec, params.Enabled)
 	if err != nil {
@@ -233,4 +245,40 @@ func (r *Repository) ListLogs(ctx context.Context, params ListLogsParams) ([]mod
 	}
 
 	return items, total, nil
+}
+
+func (r *Repository) GetMonitorStats(ctx context.Context, targetID, userID string, from, to time.Time) (MonitorStats, []TimelinePoint, error) {
+	var stats MonitorStats
+
+	err := r.DB.GetContext(ctx, &stats, `
+		select 
+			count(*) as total,
+			coalesce(sum(case when success then 1 else 0 end), 0) as success_count,
+			coalesce(avg(response_time_ms), 0) as avg_response
+		from checklogs cl
+		join monitors t on cl.monitor_id = t.id
+		where cl.monitor_id = $1
+		  and t.user_id = $2
+		  and cl.checked_at between $3 and $4
+	`, targetID, userID, from, to)
+	if err != nil {
+		return MonitorStats{}, nil, fmt.Errorf("get stats: %w", err)
+	}
+
+	var timeline []TimelinePoint
+	err = r.DB.SelectContext(ctx, &timeline, `
+		select cl.checked_at, cl.success, cl.response_time_ms
+		from checklogs cl
+		join monitors t on cl.monitor_id = t.id
+		where cl.monitor_id = $1
+		  and t.user_id = $2
+		  and cl.checked_at between $3 and $4
+		order by cl.checked_at asc
+		limit 1000
+	`, targetID, userID, from, to)
+	if err != nil {
+		return MonitorStats{}, nil, fmt.Errorf("get timeline: %w", err)
+	}
+
+	return stats, timeline, nil
 }

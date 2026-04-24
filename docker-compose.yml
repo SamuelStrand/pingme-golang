@@ -16,6 +16,19 @@ services:
       - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+  migrate:
+    image: migrate/migrate
+    container_name: pingme-migrate
+    volumes:
+      - ./migrations:/migrations
+    command: [
+      "-path", "/migrations",
+      "-database", "postgres://postgres:postgres@db:5432/pingme?sslmode=disable",
+      "up"
+    ]
+    depends_on:
+      db:
+        condition: service_healthy
 
   app:
     build: .
@@ -29,9 +42,10 @@ services:
       JWT_ACCESS_TTL: ${JWT_ACCESS_TTL}
       JWT_REFRESH_TTL: ${JWT_REFRESH_TTL}
       HTTP_ADDR: ${HTTP_ADDR}
+      TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME}
     depends_on:
-      db:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   worker:
     build: .
@@ -43,6 +57,17 @@ services:
       WORKER_BATCH_SIZE: ${WORKER_BATCH_SIZE}
       WORKER_QUEUE_SIZE: ${WORKER_QUEUE_SIZE}
       SCHEDULER_TICK: ${SCHEDULER_TICK}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+    depends_on:
+      app:
+        condition: service_started
+
+  bot:
+    build: .
+    container_name: pingme-bot
+    command: ["./bot"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
     depends_on:
       db:

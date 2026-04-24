@@ -8,6 +8,8 @@
 *.so
 *.dylib
 
+.gocache/
+
 # Test binary, built with `go test -c`
 *.test
 
@@ -26,7 +28,16 @@ go.work.sum
 
 # env file
 .env
+.env.local
+.env.docker
 
 # Editor/IDE
 .idea/
 # .vscode/
+
+# Frontend build output
+frontend/node_modules/
+frontend/dist/
+frontend/*.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts
