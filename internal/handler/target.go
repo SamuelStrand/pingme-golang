@@ -41,28 +41,34 @@ type TargetHandler struct {
 }
 
 type createTargetRequest struct {
-	URL      string `json:"url"`
-	Interval int    `json:"interval"`
-	Enabled  *bool  `json:"enabled"`
-	Name     string `json:"name"`
+	URL               string  `json:"url"`
+	Interval          int     `json:"interval"`
+	Enabled           *bool   `json:"enabled"`
+	Name              string  `json:"name"`
+	Slug              *string `json:"slug"`
+	StatusPageEnabled bool    `json:"status_page_enabled"`
 }
 
 type updateTargetRequest struct {
-	URL      *string `json:"url"`
-	Interval *int    `json:"interval"`
-	Enabled  *bool   `json:"enabled"`
-	Name     *string `json:"name"`
+	URL               *string `json:"url"`
+	Interval          *int    `json:"interval"`
+	Enabled           *bool   `json:"enabled"`
+	Name              *string `json:"name"`
+	Slug              *string `json:"slug"`
+	StatusPageEnabled *bool   `json:"status_page_enabled"`
 }
 
 type targetResponse struct {
-	ID            string     `json:"id"`
-	URL           string     `json:"url"`
-	Name          string     `json:"name"`
-	Interval      int        `json:"interval"`
-	Enabled       bool       `json:"enabled"`
-	Status        string     `json:"status"`
-	LastCheckedAt *time.Time `json:"last_checked_at"`
-	CreatedAt     time.Time  `json:"created_at"`
+	ID                string     `json:"id"`
+	URL               string     `json:"url"`
+	Name              string     `json:"name"`
+	Interval          int        `json:"interval"`
+	Enabled           bool       `json:"enabled"`
+	Status            string     `json:"status"`
+	LastCheckedAt     *time.Time `json:"last_checked_at"`
+	CreatedAt         time.Time  `json:"created_at"`
+	Slug              *string    `json:"slug"`
+	StatusPageEnabled bool       `json:"status_page_enabled"`
 }
 
 type targetListResponse struct {
@@ -107,11 +113,13 @@ func (h *TargetHandler) Create(c *gin.Context) {
 	}
 
 	item, err := h.Service.Create(c.Request.Context(), monitor.CreateInput{
-		UserID:   userID,
-		URL:      req.URL,
-		Name:     req.Name,
-		Interval: req.Interval,
-		Enabled:  enabled,
+		UserID:            userID,
+		URL:               req.URL,
+		Name:              req.Name,
+		Slug:              req.Slug,
+		StatusPageEnabled: req.StatusPageEnabled,
+		Interval:          req.Interval,
+		Enabled:           enabled,
 	})
 	if err != nil {
 		writeTargetError(c, err)
@@ -178,12 +186,14 @@ func (h *TargetHandler) Update(c *gin.Context) {
 	}
 
 	item, err := h.Service.Update(c.Request.Context(), monitor.UpdateInput{
-		UserID:   userID,
-		ID:       c.Param("id"),
-		URL:      req.URL,
-		Name:     req.Name,
-		Interval: req.Interval,
-		Enabled:  req.Enabled,
+		UserID:            userID,
+		ID:                c.Param("id"),
+		URL:               req.URL,
+		Name:              req.Name,
+		Slug:              req.Slug,
+		StatusPageEnabled: req.StatusPageEnabled,
+		Interval:          req.Interval,
+		Enabled:           req.Enabled,
 	})
 	if err != nil {
 		writeTargetError(c, err)
@@ -280,14 +290,16 @@ func (h *TargetHandler) Logs(c *gin.Context) {
 
 func newTargetResponse(item models.Monitor) targetResponse {
 	return targetResponse{
-		ID:            item.ID,
-		URL:           item.URL,
-		Name:          item.Name,
-		Interval:      item.Interval,
-		Enabled:       item.Enabled,
-		Status:        item.LastStatus,
-		LastCheckedAt: item.LastCheckedAt,
-		CreatedAt:     item.CreatedAt,
+		ID:                item.ID,
+		URL:               item.URL,
+		Name:              item.Name,
+		Slug:              item.Slug,
+		StatusPageEnabled: item.StatusPageEnabled,
+		Interval:          item.Interval,
+		Enabled:           item.Enabled,
+		Status:            item.LastStatus,
+		LastCheckedAt:     item.LastCheckedAt,
+		CreatedAt:         item.CreatedAt,
 	}
 }
 
@@ -310,6 +322,17 @@ func writeTargetError(c *gin.Context, err error) {
 					monitor.MaxIntervalSeconds,
 				),
 			},
+		})
+	case errors.Is(err, monitor.ErrInvalidSlug):
+		c.JSON(http.StatusBadRequest, httpx.ErrorResponse{
+			Error:   "validation_error",
+			Message: "invalid target payload",
+			Fields:  map[string]string{"slug": "must be 3-60 chars and contain only a-z, 0-9 and -"},
+		})
+	case errors.Is(err, monitor.ErrSlugTaken):
+		c.JSON(http.StatusConflict, httpx.ErrorResponse{
+			Error:   "slug_taken",
+			Message: "slug already exists",
 		})
 	case errors.Is(err, monitor.ErrEmptyUpdate):
 		c.JSON(http.StatusBadRequest, httpx.ErrorResponse{

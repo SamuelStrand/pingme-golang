@@ -48,6 +48,7 @@ func main() {
 	monitorRepo := monitor.NewRepository(db)
 	monitorService := monitor.NewService(monitorRepo)
 	targetHandler := &handler.TargetHandler{Service: monitorService}
+	statusPageHandler := &handler.StatusPageHandler{Service: monitorService}
 
 	r := gin.New()
 	if err := r.SetTrustedProxies(loadTrustedProxies()); err != nil {
@@ -57,6 +58,7 @@ func main() {
 
 	r.GET("/health", healthHandler.Health)
 	r.GET("/ready", healthHandler.Ready)
+	r.GET("/status/:slug", statusPageHandler.Get)
 	r.GET("/swagger", handler.SwaggerUI)
 	r.GET("/openapi.yaml", func(c *gin.Context) {
 		c.Header("Content-Type", "application/yaml; charset=utf-8")
