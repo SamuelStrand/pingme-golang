@@ -32,6 +32,8 @@ export type Target = {
   status: TargetStatus;
   last_checked_at?: string | null;
   created_at: string;
+  slug?: string | null;
+  status_page_enabled: boolean;
 };
 
 export type TargetListResponse = {
@@ -71,6 +73,15 @@ export type TargetStatsResponse = {
   avg_response_ms: number;
   total_checks: number;
   failed_checks: number;
+  timeline: TargetTimelinePoint[];
+};
+
+export type StatusPageResponse = {
+  monitor_name: string;
+  url: string;
+  status: string;
+  uptime_percent: number;
+  avg_response_ms: number;
   timeline: TargetTimelinePoint[];
 };
 

@@ -12,6 +12,7 @@ import {
   TokenPair,
   User
 } from "./types";
+import { TimelineBars } from "./StatusPage";
 import {
   CheckIcon,
   EditIcon,
@@ -33,6 +34,8 @@ type TargetDraft = {
   url: string;
   interval: string;
   enabled: boolean;
+  slug: string;
+  status_page_enabled: boolean;
 };
 
 type AlertDraft = {
@@ -52,7 +55,9 @@ const emptyTargetDraft: TargetDraft = {
   name: "",
   url: "",
   interval: "60",
-  enabled: true
+  enabled: true,
+  slug: "",
+  status_page_enabled: false
 };
 
 const emptyAlertDraft: AlertDraft = {
@@ -344,12 +349,19 @@ function App() {
     event.preventDefault();
     setBusy(true);
     try {
-      const payload = {
+      const trimmedSlug = targetDraft.slug.trim();
+      const payload: Record<string, unknown> = {
         name: targetDraft.name,
         url: targetDraft.url,
         interval: Number(targetDraft.interval),
-        enabled: targetDraft.enabled
+        enabled: targetDraft.enabled,
+        status_page_enabled: targetDraft.status_page_enabled
       };
+      if (trimmedSlug) {
+        payload.slug = trimmedSlug;
+      } else if (editingTargetId) {
+        payload.slug = null;
+      }
 
       if (editingTargetId) {
         await authedRequest<Target>(`/targets/${editingTargetId}`, {
@@ -402,7 +414,9 @@ function App() {
       name: target.name || "",
       url: target.url,
       interval: String(target.interval),
-      enabled: target.enabled
+      enabled: target.enabled,
+      slug: target.slug ?? "",
+      status_page_enabled: target.status_page_enabled ?? false
     });
     setView("targets");
   }
@@ -699,6 +713,32 @@ function App() {
                         }
                         required
                       />
+                    </label>
+                    <label>
+                      Slug
+                      <input
+                        value={targetDraft.slug}
+                        onChange={(event) =>
+                          setTargetDraft((draft) => ({ ...draft, slug: event.target.value }))
+                        }
+                        placeholder="your-slug"
+                        pattern="[a-z0-9-]*"
+                        title="3-60 characters: lowercase letters, numbers, and hyphens"
+                      />
+                      <small className="field-hint">Публичный адрес: /status/your-slug</small>
+                    </label>
+                    <label className="toggle-row">
+                      <input
+                        type="checkbox"
+                        checked={targetDraft.status_page_enabled}
+                        onChange={(event) =>
+                          setTargetDraft((draft) => ({
+                            ...draft,
+                            status_page_enabled: event.target.checked
+                          }))
+                        }
+                      />
+                      Показывать публичную страницу
                     </label>
                     <label className="toggle-row">
                       <input
@@ -1118,7 +1158,7 @@ function TargetAnalyticsPanel({
             <Metric label="Checks" value={stats.total_checks} />
             <Metric label="Failures" value={stats.failed_checks} accent={stats.failed_checks > 0 ? "bad" : "good"} />
           </div>
-          <StatsTimeline stats={stats} />
+          <TimelineBars timeline={stats.timeline} failedChecks={stats.failed_checks} />
           <div className="analytics-footnote">
             Range {formatDate(stats.from)} to {formatDate(stats.to)}
           </div>
@@ -1163,9 +1203,7 @@ function TargetTable({
               <td>
                 <div className="target-cell">
                   <strong>{displayTargetName(target)}</strong>
-                  <a href={target.url} target="_blank" rel="noreferrer">
-                    {target.url}
-                  </a>
+                  <TargetCellLinks target={target} />
                 </div>
               </td>
               <td>
@@ -1251,36 +1289,24 @@ function LogsTable({ logs, loading }: { logs: TargetLogListResponse["items"]; lo
   );
 }
 
-function StatsTimeline({ stats }: { stats: TargetStatsResponse }) {
-  if (stats.timeline.length === 0) {
-    return <EmptyState title="No checks recorded for this range" />;
-  }
-
-  const peakResponseTime = Math.max(
-    ...stats.timeline.map((point) => Math.max(point.response_time_ms, 1)),
-    1
-  );
-
+function TargetCellLinks({ target }: { target: Target }) {
   return (
-    <div className="timeline-card">
-      <div className="timeline-grid" role="img" aria-label="Target response timeline">
-        {stats.timeline.map((point) => {
-          const height = Math.max(18, Math.round((Math.max(point.response_time_ms, 1) / peakResponseTime) * 92));
-          const label = `${formatDate(point.timestamp)} - ${point.success ? "Success" : "Failure"} - ${point.response_time_ms} ms`;
-          return (
-            <span
-              key={`${point.timestamp}-${point.response_time_ms}-${point.success}`}
-              className={point.success ? "timeline-bar success" : "timeline-bar failure"}
-              style={{ height: `${height}px` }}
-              title={label}
-            />
-          );
-        })}
-      </div>
-      <div className="timeline-meta">
-        <span>{stats.timeline.length} checks shown</span>
-        <span>{stats.failed_checks === 0 ? "No failures in range" : `${stats.failed_checks} failed checks`}</span>
-      </div>
+    <div className="target-cell-links">
+      <a href={target.url} target="_blank" rel="noreferrer">
+        {target.url}
+      </a>
+      {target.slug && target.status_page_enabled && (
+        <a
+          className="status-page-link icon-button"
+          href={`/status/${target.slug}`}
+          target="_blank"
+          rel="noreferrer"
+          title="Open public status page"
+          aria-label="Open public status page"
+        >
+          <ExternalIcon />
+        </a>
+      )}
     </div>
   );
 }
