@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/lib/pq"
 	"strings"
 	"time"
 
@@ -18,6 +19,8 @@ const monitorColumns = `
 	user_id,
 	url,
 	coalesce(name, '') as name,
+	slug,
+	status_page_enabled,
 	interval_seconds,
 	timeout_seconds,
 	enabled,
@@ -43,20 +46,24 @@ type Repository struct {
 }
 
 type CreateParams struct {
-	UserID   string
-	URL      string
-	Name     string
-	Interval int
-	Enabled  bool
+	UserID            string
+	URL               string
+	Name              string
+	Slug              *string
+	StatusPageEnabled bool
+	Interval          int
+	Enabled           bool
 }
 
 type UpdateParams struct {
-	ID       string
-	UserID   string
-	URL      string
-	Name     string
-	Interval int
-	Enabled  bool
+	ID                string
+	UserID            string
+	URL               string
+	Name              string
+	Slug              *string
+	StatusPageEnabled bool
+	Interval          int
+	Enabled           bool
 }
 
 type ListLogsParams struct {
@@ -86,11 +93,15 @@ func NewRepository(db *sqlx.DB) *Repository {
 func (r *Repository) Create(ctx context.Context, params CreateParams) (models.Monitor, error) {
 	var item models.Monitor
 	err := r.DB.GetContext(ctx, &item, fmt.Sprintf(`
-		insert into monitors (user_id, url, name, interval_seconds, timeout_seconds, enabled, next_check_at)
-		values ($1, $2, $3, $4, $5, $6, now())
+		insert into monitors (user_id, url, name, slug, status_page_enabled, interval_seconds, timeout_seconds, enabled, next_check_at)
+		values ($1, $2, $3, $4, $5, $6, $7, $8, now())
 		returning %s
-	`, monitorColumns), params.UserID, params.URL, params.Name, params.Interval, DefaultTimeoutInSec, params.Enabled)
+	`, monitorColumns), params.UserID, params.URL, params.Name, params.Slug, params.StatusPageEnabled, params.Interval, DefaultTimeoutInSec, params.Enabled)
 	if err != nil {
+		var pqErr *pq.Error
+		if errors.As(err, &pqErr) && string(pqErr.Code) == "23505" {
+			return models.Monitor{}, ErrSlugTaken
+		}
 		return models.Monitor{}, fmt.Errorf("create monitor: %w", err)
 	}
 
@@ -144,6 +155,23 @@ func (r *Repository) GetByIDAndUserID(ctx context.Context, id string, userID str
 	return item, nil
 }
 
+func (r *Repository) GetBySlug(ctx context.Context, slug string) (models.Monitor, error) {
+	var item models.Monitor
+	err := r.DB.GetContext(ctx, &item, fmt.Sprintf(`
+		select %s
+		from monitors
+		where slug = $1
+	`, monitorColumns), slug)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return models.Monitor{}, ErrNotFound
+		}
+		return models.Monitor{}, fmt.Errorf("get monitor by slug: %w", err)
+	}
+
+	return item, nil
+}
+
 func (r *Repository) ExistsByIDAndUserID(ctx context.Context, id string, userID string) error {
 	var exists bool
 	err := r.DB.GetContext(ctx, &exists, `
@@ -169,14 +197,20 @@ func (r *Repository) Update(ctx context.Context, params UpdateParams) (models.Mo
 		update monitors
 		set url = $1,
 			name = $2,
-			interval_seconds = $3,
-			enabled = $4
-		where id = $5 and user_id = $6
+			slug = $3,
+			status_page_enabled = $4,
+			interval_seconds = $5,
+			enabled = $6
+		where id = $7 and user_id = $8
 		returning %s
-	`, monitorColumns), params.URL, params.Name, params.Interval, params.Enabled, params.ID, params.UserID)
+	`, monitorColumns), params.URL, params.Name, params.Slug, params.StatusPageEnabled, params.Interval, params.Enabled, params.ID, params.UserID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return models.Monitor{}, ErrNotFound
+		}
+		var pqErr *pq.Error
+		if errors.As(err, &pqErr) && string(pqErr.Code) == "23505" {
+			return models.Monitor{}, ErrSlugTaken
 		}
 		return models.Monitor{}, fmt.Errorf("update monitor: %w", err)
 	}
@@ -278,6 +312,38 @@ func (r *Repository) GetMonitorStats(ctx context.Context, targetID, userID strin
 	`, targetID, userID, from, to)
 	if err != nil {
 		return MonitorStats{}, nil, fmt.Errorf("get timeline: %w", err)
+	}
+
+	return stats, timeline, nil
+}
+
+func (r *Repository) GetPublicStats(ctx context.Context, monitorID string, from, to time.Time) (MonitorStats, []TimelinePoint, error) {
+	var stats MonitorStats
+
+	err := r.DB.GetContext(ctx, &stats, `
+		select 
+			count(*) as total,
+			coalesce(sum(case when success then 1 else 0 end), 0) as success_count,
+			coalesce(avg(response_time_ms), 0) as avg_response
+		from checklogs
+		where monitor_id = $1
+		  and checked_at between $2 and $3
+	`, monitorID, from, to)
+	if err != nil {
+		return MonitorStats{}, nil, fmt.Errorf("get public stats: %w", err)
+	}
+
+	var timeline []TimelinePoint
+	err = r.DB.SelectContext(ctx, &timeline, `
+		select checked_at, success, response_time_ms
+		from checklogs
+		where monitor_id = $1
+		  and checked_at between $2 and $3
+		order by checked_at asc
+		limit 1000
+	`, monitorID, from, to)
+	if err != nil {
+		return MonitorStats{}, nil, fmt.Errorf("get public timeline: %w", err)
 	}
 
 	return stats, timeline, nil

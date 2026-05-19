@@ -7,6 +7,8 @@ type Monitor struct {
 	UserID              string     `db:"user_id" json:"user_id"`
 	URL                 string     `db:"url" json:"url"`
 	Name                string     `db:"name" json:"name"`
+	Slug                *string    `db:"slug" json:"slug"`
+	StatusPageEnabled   bool       `db:"status_page_enabled" json:"status_page_enabled"`
 	Interval            int        `db:"interval_seconds" json:"interval_seconds"`
 	Timeout             int        `db:"timeout_seconds" json:"timeout_seconds"`
 	Enabled             bool       `db:"enabled" json:"enabled"`

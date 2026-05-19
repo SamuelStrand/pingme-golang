@@ -24,6 +24,8 @@ var (
 	ErrEmptyUpdate      = errors.New("empty monitor update")
 	ErrNotFound         = errors.New("monitor not found")
 	ErrInvalidDateRange = errors.New("invalid log date range")
+	ErrInvalidSlug      = errors.New("invalid monitor slug")
+	ErrSlugTaken        = errors.New("monitor slug already exists")
 )
 
 type repository interface {
@@ -35,6 +37,8 @@ type repository interface {
 	Delete(ctx context.Context, id string, userID string) error
 	ListLogs(ctx context.Context, params ListLogsParams) ([]models.CheckLog, int, error)
 	GetMonitorStats(ctx context.Context, targetID, userID string, from, to time.Time) (MonitorStats, []TimelinePoint, error)
+	GetBySlug(ctx context.Context, slug string) (models.Monitor, error)
+	GetPublicStats(ctx context.Context, monitorID string, from, to time.Time) (MonitorStats, []TimelinePoint, error)
 }
 
 type Service struct {
@@ -42,20 +46,24 @@ type Service struct {
 }
 
 type CreateInput struct {
-	UserID   string
-	URL      string
-	Name     string
-	Interval int
-	Enabled  bool
+	UserID            string
+	URL               string
+	Name              string
+	Interval          int
+	Enabled           bool
+	Slug              *string
+	StatusPageEnabled bool
 }
 
 type UpdateInput struct {
-	UserID   string
-	ID       string
-	URL      *string
-	Name     *string
-	Interval *int
-	Enabled  *bool
+	UserID            string
+	ID                string
+	URL               *string
+	Name              *string
+	Interval          *int
+	Enabled           *bool
+	Slug              *string
+	StatusPageEnabled *bool
 }
 
 type ListInput struct {
@@ -87,6 +95,12 @@ type CheckLogPage struct {
 	Total    int
 }
 
+type PublicStatus struct {
+	Monitor  models.Monitor
+	Stats    MonitorStats
+	Timeline []TimelinePoint
+}
+
 func NewService(repo repository) *Service {
 	return &Service{repo: repo}
 }
@@ -106,12 +120,19 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (models.Monitor
 		return models.Monitor{}, err
 	}
 
+	slug, err := normalizeSlug(input.Slug)
+	if err != nil {
+		return models.Monitor{}, err
+	}
+
 	return s.repo.Create(ctx, CreateParams{
-		UserID:   input.UserID,
-		URL:      normalizedURL,
-		Name:     normalizeName(input.Name),
-		Interval: interval,
-		Enabled:  input.Enabled,
+		UserID:            input.UserID,
+		URL:               normalizedURL,
+		Name:              normalizeName(input.Name),
+		Slug:              slug,
+		StatusPageEnabled: input.StatusPageEnabled,
+		Interval:          interval,
+		Enabled:           input.Enabled,
 	})
 }
 
@@ -130,7 +151,7 @@ func (s *Service) List(ctx context.Context, input ListInput) (MonitorPage, error
 }
 
 func (s *Service) Update(ctx context.Context, input UpdateInput) (models.Monitor, error) {
-	if input.URL == nil && input.Name == nil && input.Interval == nil && input.Enabled == nil {
+	if input.URL == nil && input.Name == nil && input.Interval == nil && input.Enabled == nil && input.Slug == nil && input.StatusPageEnabled == nil {
 		return models.Monitor{}, ErrEmptyUpdate
 	}
 
@@ -151,6 +172,12 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (models.Monitor
 	if input.Enabled != nil {
 		current.Enabled = *input.Enabled
 	}
+	if input.Slug != nil {
+		current.Slug = input.Slug
+	}
+	if input.StatusPageEnabled != nil {
+		current.StatusPageEnabled = *input.StatusPageEnabled
+	}
 
 	normalizedURL, err := normalizeURL(current.URL)
 	if err != nil {
@@ -162,13 +189,20 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (models.Monitor
 		return models.Monitor{}, err
 	}
 
+	slug, err := normalizeSlug(current.Slug)
+	if err != nil {
+		return models.Monitor{}, err
+	}
+
 	return s.repo.Update(ctx, UpdateParams{
-		ID:       input.ID,
-		UserID:   input.UserID,
-		URL:      normalizedURL,
-		Name:     normalizeName(current.Name),
-		Interval: interval,
-		Enabled:  current.Enabled,
+		ID:                input.ID,
+		UserID:            input.UserID,
+		URL:               normalizedURL,
+		Name:              normalizeName(current.Name),
+		Slug:              slug,
+		StatusPageEnabled: current.StatusPageEnabled,
+		Interval:          interval,
+		Enabled:           current.Enabled,
 	})
 }
 
@@ -231,4 +265,56 @@ func normalizeInterval(interval int) (int, error) {
 
 func normalizeName(name string) string {
 	return strings.TrimSpace(name)
+}
+
+func (s *Service) GetPublicStatus(ctx context.Context, slug string, from, to time.Time) (PublicStatus, error) {
+	normalizedSlug, err := normalizeSlug(&slug)
+	if err != nil {
+		return PublicStatus{}, err
+	}
+
+	item, err := s.repo.GetBySlug(ctx, *normalizedSlug)
+	if err != nil {
+		return PublicStatus{}, err
+	}
+	if !item.StatusPageEnabled {
+		return PublicStatus{}, ErrNotFound
+	}
+
+	stats, timeline, err := s.repo.GetPublicStats(ctx, item.ID, from, to)
+	if err != nil {
+		return PublicStatus{}, err
+	}
+	if timeline == nil {
+		timeline = []TimelinePoint{}
+	}
+
+	return PublicStatus{
+		Monitor:  item,
+		Stats:    stats,
+		Timeline: timeline,
+	}, nil
+}
+
+func normalizeSlug(rawSlug *string) (*string, error) {
+	if rawSlug == nil {
+		return nil, nil
+	}
+
+	slug := strings.TrimSpace(*rawSlug)
+	if slug == "" {
+		return nil, nil
+	}
+	if len(slug) < 3 || len(slug) > 60 {
+		return nil, ErrInvalidSlug
+	}
+
+	for _, ch := range slug {
+		if (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '-' {
+			continue
+		}
+		return nil, ErrInvalidSlug
+	}
+
+	return &slug, nil
 }
