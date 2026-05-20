@@ -52,5 +52,10 @@ func loadNotifier() worker.Notifier {
 		log.Print("TELEGRAM_BOT_TOKEN is not set, telegram notifications are disabled")
 	}
 
-	return worker.NewAlertChannelNotifier(token)
+	smtpCfg := worker.LoadSMTPConfigFromEnv()
+	if !smtpCfg.Configured() {
+		log.Print("SMTP_HOST, SMTP_PORT, or SMTP_FROM is not set, email notifications are disabled")
+	}
+
+	return worker.NewAlertChannelNotifier(token, smtpCfg)
 }

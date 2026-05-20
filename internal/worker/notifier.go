@@ -37,20 +37,29 @@ func (n *LoggingNotifier) Notify(_ context.Context, event Event, channels []mode
 
 type AlertChannelNotifier struct {
 	telegramToken string
+	smtpCfg       SMTPConfig
 	client        *http.Client
+	sendEmail     func(SMTPConfig, string, string, string) error
 }
 
-func NewAlertChannelNotifier(telegramToken string) *AlertChannelNotifier {
+func NewAlertChannelNotifier(telegramToken string, smtpConfigs ...SMTPConfig) *AlertChannelNotifier {
+	smtpCfg := SMTPConfig{}
+	if len(smtpConfigs) > 0 {
+		smtpCfg = smtpConfigs[0]
+	}
+
 	return &AlertChannelNotifier{
 		telegramToken: strings.TrimSpace(telegramToken),
+		smtpCfg:       smtpCfg.normalized(),
 		client: &http.Client{
 			Timeout: notificationRequestTimeout,
 		},
+		sendEmail: sendEmail,
 	}
 }
 
 func NewTelegramNotifier(token string) *AlertChannelNotifier {
-	return NewAlertChannelNotifier(token)
+	return NewAlertChannelNotifier(token, SMTPConfig{})
 }
 
 func (n *AlertChannelNotifier) Notify(ctx context.Context, event Event, channels []models.AlertChannel) error {
@@ -80,6 +89,23 @@ func (n *AlertChannelNotifier) Notify(ctx context.Context, event Event, channels
 				notifyErrs = append(
 					notifyErrs,
 					fmt.Errorf("send webhook notification to %q: %w", channel.Address, err),
+				)
+			}
+		case models.AlertChannelTypeEmail:
+			if !n.smtpCfg.Configured() {
+				log.Printf(
+					"skip alert channel id=%s type=%s: SMTP_HOST, SMTP_PORT, or SMTP_FROM is not configured",
+					channel.ID,
+					channel.Type,
+				)
+				continue
+			}
+
+			subject, body := emailContent(event)
+			if err := n.sendEmail(n.smtpCfg, channel.Address, subject, body); err != nil {
+				notifyErrs = append(
+					notifyErrs,
+					fmt.Errorf("send email notification to %q: %w", channel.Address, err),
 				)
 			}
 		default:
@@ -209,10 +235,7 @@ func newWebhookPayload(event Event) webhookPayload {
 }
 
 func telegramMessage(event Event) string {
-	monitorName := event.Monitor.Name
-	if strings.TrimSpace(monitorName) == "" {
-		monitorName = event.Monitor.URL
-	}
+	monitorName := monitorDisplayName(event)
 
 	switch event.Type {
 	case EventTypeDown:
@@ -234,4 +257,45 @@ func telegramMessage(event Event) string {
 	default:
 		return fmt.Sprintf("Monitor event %s for %s", event.Type, monitorName)
 	}
+}
+
+func emailContent(event Event) (string, string) {
+	monitorName := monitorDisplayName(event)
+
+	var subject string
+	switch event.Type {
+	case EventTypeDown:
+		subject = fmt.Sprintf("[PingMe] \U0001F534 %s is DOWN", monitorName)
+	case EventTypeRecovered:
+		subject = fmt.Sprintf("[PingMe] \U0001F7E2 %s recovered", monitorName)
+	default:
+		subject = fmt.Sprintf("[PingMe] %s event for %s", event.Type, monitorName)
+	}
+
+	var body strings.Builder
+	fmt.Fprintf(&body, "Monitor: %s\n", monitorName)
+	fmt.Fprintf(&body, "URL: %s\n", event.Monitor.URL)
+	fmt.Fprintf(&body, "Event: %s\n", event.Type)
+	if event.Check.StatusCode != 0 {
+		fmt.Fprintf(&body, "Status: %d\n", event.Check.StatusCode)
+	}
+	if strings.TrimSpace(event.Check.ErrorMessage) != "" {
+		fmt.Fprintf(&body, "Error: %s\n", event.Check.ErrorMessage)
+	}
+	fmt.Fprintf(&body, "Latency: %d ms\n", event.Check.ResponseTimeMs)
+	fmt.Fprintf(&body, "Checked at: %s\n", event.Check.CheckedAt.UTC().Format(time.RFC3339))
+	if strings.TrimSpace(event.IncidentID) != "" {
+		fmt.Fprintf(&body, "Incident: %s\n", event.IncidentID)
+	}
+
+	return subject, body.String()
+}
+
+func monitorDisplayName(event Event) string {
+	monitorName := strings.TrimSpace(event.Monitor.Name)
+	if monitorName == "" {
+		monitorName = event.Monitor.URL
+	}
+
+	return monitorName
 }

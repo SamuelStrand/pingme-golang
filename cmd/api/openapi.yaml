@@ -559,7 +559,7 @@ components:
           format: uuid
         type:
           type: string
-          enum: [telegram, webhook]
+          enum: [telegram, webhook, email]
         address:
           type: string
         enabled:
@@ -573,7 +573,7 @@ components:
       properties:
         type:
           type: string
-          enum: [telegram, webhook]
+          enum: [telegram, webhook, email]
         address:
           type: string
         enabled:
@@ -584,7 +584,7 @@ components:
       properties:
         type:
           type: string
-          enum: [telegram, webhook]
+          enum: [telegram, webhook, email]
         address:
           type: string
         enabled:

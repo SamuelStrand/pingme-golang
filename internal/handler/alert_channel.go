@@ -135,7 +135,7 @@ func writeAlertChannelError(c *gin.Context, err error) {
 		c.JSON(http.StatusBadRequest, httpx.ErrorResponse{
 			Error:   "validation_error",
 			Message: "invalid alert channel type",
-			Fields:  map[string]string{"type": "must be one of: telegram, webhook"},
+			Fields:  map[string]string{"type": "must be one of: telegram, webhook, email"},
 		})
 	case errors.Is(err, alertchannel.ErrInvalidAddress):
 		c.JSON(http.StatusBadRequest, httpx.ErrorResponse{

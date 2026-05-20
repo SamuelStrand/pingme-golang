@@ -58,6 +58,11 @@ services:
       WORKER_QUEUE_SIZE: ${WORKER_QUEUE_SIZE}
       SCHEDULER_TICK: ${SCHEDULER_TICK}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USERNAME: ${SMTP_USERNAME}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_FROM: ${SMTP_FROM}
     depends_on:
       app:
         condition: service_started

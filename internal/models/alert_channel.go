@@ -5,6 +5,7 @@ import "time"
 const (
 	AlertChannelTypeTelegram = "telegram"
 	AlertChannelTypeWebhook  = "webhook"
+	AlertChannelTypeEmail    = "email"
 )
 
 type AlertChannel struct {

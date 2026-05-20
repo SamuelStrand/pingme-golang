@@ -12,6 +12,7 @@ import (
 const (
 	TypeTelegram = models.AlertChannelTypeTelegram
 	TypeWebhook  = models.AlertChannelTypeWebhook
+	TypeEmail    = models.AlertChannelTypeEmail
 )
 
 var ErrInvalidType = errors.New("invalid alert channel type")
@@ -128,9 +129,19 @@ func normalizeAndValidate(channelType string, address string) (string, string, e
 		if parsed.Scheme != "http" && parsed.Scheme != "https" {
 			return "", "", ErrInvalidAddress
 		}
+	case TypeEmail:
+		if !isValidEmail(address) {
+			return "", "", ErrInvalidAddress
+		}
 	default:
 		return "", "", ErrInvalidType
 	}
 
 	return channelType, address, nil
+}
+
+func isValidEmail(address string) bool {
+	return len(address) > 3 &&
+		strings.Contains(address, "@") &&
+		!strings.ContainsAny(address, " \t\r\n")
 }

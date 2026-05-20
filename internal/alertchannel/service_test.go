@@ -28,15 +28,40 @@ func TestNormalizeAndValidate(t *testing.T) {
 			wantValue: "https://example.com/hook",
 		},
 		{
+			name:      "email allows trimmed value",
+			typ:       " Email ",
+			address:   " team@example.com ",
+			wantType:  TypeEmail,
+			wantValue: "team@example.com",
+		},
+		{
 			name:    "webhook rejects non http scheme",
 			typ:     "webhook",
 			address: "ftp://example.com/hook",
 			wantErr: ErrInvalidAddress,
 		},
 		{
-			name:    "unknown type is rejected",
+			name:    "email rejects missing at sign",
 			typ:     "email",
-			address: "test@example.com",
+			address: "team.example.com",
+			wantErr: ErrInvalidAddress,
+		},
+		{
+			name:    "email rejects whitespace",
+			typ:     "email",
+			address: "team @example.com",
+			wantErr: ErrInvalidAddress,
+		},
+		{
+			name:    "email rejects too short address",
+			typ:     "email",
+			address: "a@b",
+			wantErr: ErrInvalidAddress,
+		},
+		{
+			name:    "unknown type is rejected",
+			typ:     "sms",
+			address: "+123456789",
 			wantErr: ErrInvalidType,
 		},
 	}
