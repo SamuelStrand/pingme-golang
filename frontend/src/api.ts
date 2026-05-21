@@ -1,4 +1,4 @@
-import type { ApiErrorPayload, TokenPair } from "./types";
+import type { ApiErrorPayload, StatusPageResponse, TokenPair } from "./types";
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api";
 
@@ -16,21 +16,23 @@ export class ApiError extends Error {
 
 type ApiOptions = RequestInit & {
   token?: string | null;
+  baseUrl?: string;
 };
 
 export async function apiRequest<T>(path: string, options: ApiOptions = {}): Promise<T> {
-  const headers = new Headers(options.headers);
-  const hasBody = options.body != null;
+  const { token, baseUrl, ...requestInit } = options;
+  const headers = new Headers(requestInit.headers);
+  const hasBody = requestInit.body != null;
 
   if (hasBody && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
-  if (options.token) {
-    headers.set("Authorization", `Bearer ${options.token}`);
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
+  const response = await fetch(`${baseUrl ?? API_BASE_URL}${path}`, {
+    ...requestInit,
     headers
   });
 
@@ -68,4 +70,8 @@ export function loadTokens(): TokenPair | null {
 export function clearTokens() {
   localStorage.removeItem("pingme.accessToken");
   localStorage.removeItem("pingme.refreshToken");
+}
+
+export async function fetchStatusPage(slug: string): Promise<StatusPageResponse> {
+  return apiRequest<StatusPageResponse>(`/status/${encodeURIComponent(slug)}`);
 }
