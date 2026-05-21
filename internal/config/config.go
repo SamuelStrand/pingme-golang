@@ -1,7 +1,18 @@
 package config
 
-import "github.com/joho/godotenv"
+import (
+	"os"
+
+	"github.com/joho/godotenv"
+)
 
 func LoadEnv() error {
-	return godotenv.Load()
+	if err := godotenv.Load(".env"); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	// Optional overrides for host-side `go run` while Postgres runs in Docker.
+	_ = godotenv.Load(".env.local")
+
+	return nil
 }
