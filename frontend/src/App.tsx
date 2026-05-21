@@ -12,6 +12,7 @@ import {
   TokenPair,
   User
 } from "./types";
+import { DateTimeField } from "./DateTimeField";
 import { TimelineBars } from "./StatusPage";
 import {
   CheckIcon,
@@ -840,22 +841,8 @@ function App() {
                   {selectedTarget ? (
                     <>
                       <div className="filters-row">
-                        <label>
-                          From
-                          <input
-                            type="datetime-local"
-                            value={logFrom}
-                            onChange={(event) => setLogFrom(event.target.value)}
-                          />
-                        </label>
-                        <label>
-                          To
-                          <input
-                            type="datetime-local"
-                            value={logTo}
-                            onChange={(event) => setLogTo(event.target.value)}
-                          />
-                        </label>
+                        <DateTimeField label="From" value={logFrom} onChange={setLogFrom} />
+                        <DateTimeField label="To" value={logTo} onChange={setLogTo} capAtNow />
                         <button
                           className="small-button"
                           type="button"
