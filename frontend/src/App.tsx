@@ -362,7 +362,7 @@ function App() {
         enabled: targetDraft.enabled,
         status_page_enabled: targetDraft.status_page_enabled
       };
-      if (trimmedSlug) {
+      if (targetDraft.status_page_enabled && trimmedSlug) {
         payload.slug = trimmedSlug;
       } else if (editingTargetId) {
         payload.slug = null;
@@ -733,27 +733,6 @@ function App() {
                           <span className="field-error">Interval must be between 30 and 3600 seconds</span>
                         )}
                     </label>
-                    <label className="field-full">
-                      Slug
-                      <input
-                        value={targetDraft.slug}
-                        className={targetDraft.slug && !isValidSlug(targetDraft.slug) ? "invalid" : ""}
-                        onChange={(event) =>
-                          setTargetDraft((draft) => ({ ...draft, slug: event.target.value }))
-                        }
-                        placeholder="your-slug"
-                        pattern="[a-z0-9-]*"
-                        title="3-60 characters: lowercase letters, numbers, and hyphens"
-                      />
-                      <span className="slug-preview">
-                        Public URL: {window.location.origin}/status/{targetDraft.slug.trim() || "your-slug"}
-                      </span>
-                      {targetDraft.slug && !isValidSlug(targetDraft.slug) && (
-                        <span className="field-error">
-                          Use 3-60 lowercase letters, numbers, and hyphens
-                        </span>
-                      )}
-                    </label>
                     <Toggle
                       className="field-full"
                       checked={targetDraft.status_page_enabled}
@@ -763,6 +742,35 @@ function App() {
                       label="Public status page"
                       description="Expose a read-only status page for this target"
                     />
+                    <label className={`field-full ${!targetDraft.status_page_enabled ? "field-disabled" : ""}`}>
+                      Slug
+                      <input
+                        value={targetDraft.slug}
+                        disabled={!targetDraft.status_page_enabled}
+                        className={targetDraft.slug && !isValidSlug(targetDraft.slug) ? "invalid" : ""}
+                        onChange={(event) =>
+                          setTargetDraft((draft) => ({ ...draft, slug: event.target.value }))
+                        }
+                        placeholder="your-slug"
+                        pattern="[a-z0-9-]*"
+                        title="3-60 characters: lowercase letters, numbers, and hyphens"
+                      />
+                      {targetDraft.status_page_enabled ? (
+                        <span className="slug-preview">
+                          Public URL: {window.location.origin}/status/
+                          {targetDraft.slug.trim() || "your-slug"}
+                        </span>
+                      ) : (
+                        <span className="field-hint">Enable public status page to set a slug</span>
+                      )}
+                      {targetDraft.status_page_enabled &&
+                        targetDraft.slug &&
+                        !isValidSlug(targetDraft.slug) && (
+                          <span className="field-error">
+                            Use 3-60 lowercase letters, numbers, and hyphens
+                          </span>
+                        )}
+                    </label>
                     <Toggle
                       className="field-full"
                       checked={targetDraft.enabled}

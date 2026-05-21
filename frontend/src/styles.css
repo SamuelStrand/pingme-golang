@@ -220,6 +220,18 @@ select.invalid {
   box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12);
 }
 
+input:disabled,
+select:disabled {
+  cursor: not-allowed;
+  color: var(--muted);
+  background: var(--surface-muted);
+  border-color: var(--line);
+}
+
+.field-disabled {
+  opacity: 0.85;
+}
+
 .field-error {
   color: var(--bad);
   font-size: 12px;
