@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -22,8 +24,19 @@ type StatusPageHandler struct {
 
 func (h *StatusPageHandler) Get(c *gin.Context) {
 	now := time.Now().UTC()
-	from := now.Add(-24 * time.Hour)
 	to := now
+
+	duration, err := parseStatusPageRange(c.DefaultQuery("range", "24h"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, httpx.ErrorResponse{
+			Error:   "validation_error",
+			Message: "invalid status page range",
+			Fields:  map[string]string{"range": "must be a valid duration, for example 30m, 24h, 7d"},
+		})
+		return
+	}
+
+	from := now.Add(-duration)
 
 	if rawFrom := c.Query("from"); rawFrom != "" {
 		parsedFrom, err := time.Parse(time.RFC3339, rawFrom)
@@ -92,4 +105,27 @@ func (h *StatusPageHandler) Get(c *gin.Context) {
 		"avg_response_ms": result.Stats.AvgResponseMs,
 		"timeline":        result.Timeline,
 	})
+}
+
+func parseStatusPageRange(raw string) (time.Duration, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 24 * time.Hour, nil
+	}
+
+	if strings.HasSuffix(raw, "d") {
+		daysRaw := strings.TrimSuffix(raw, "d")
+		days, err := strconv.Atoi(daysRaw)
+		if err != nil || days <= 0 {
+			return 0, errors.New("invalid status page range")
+		}
+		return time.Duration(days) * 24 * time.Hour, nil
+	}
+
+	duration, err := time.ParseDuration(raw)
+	if err != nil || duration <= 0 {
+		return 0, errors.New("invalid status page range")
+	}
+
+	return duration, nil
 }

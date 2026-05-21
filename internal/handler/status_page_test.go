@@ -137,3 +137,106 @@ func TestStatusPageHandlerGetRejectsInvalidRange(t *testing.T) {
 		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
 	}
 }
+
+func TestStatusPageHandlerGetParsesCustomRange(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	service := &stubStatusPageService{
+		result: monitor.PublicStatus{
+			Monitor: models.Monitor{
+				Name:       "My API",
+				URL:        "https://example.com",
+				LastStatus: "up",
+			},
+		},
+	}
+
+	router := gin.New()
+	handler := &StatusPageHandler{Service: service}
+	router.GET("/status/:slug", handler.Get)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/status/my-api?range=6h", nil)
+
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+
+	gotDuration := service.to.Sub(service.from)
+	wantDuration := 6 * time.Hour
+
+	if gotDuration < wantDuration-time.Second || gotDuration > wantDuration+time.Second {
+		t.Fatalf("range duration = %s, want about %s", gotDuration, wantDuration)
+	}
+}
+
+func TestStatusPageHandlerGetRejectsInvalidCustomRange(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	service := &stubStatusPageService{}
+
+	router := gin.New()
+	handler := &StatusPageHandler{Service: service}
+	router.GET("/status/:slug", handler.Get)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/status/my-api?range=bad-range", nil)
+
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
+	}
+}
+
+func TestStatusPageHandlerGetFromToOverrideRange(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	service := &stubStatusPageService{
+		result: monitor.PublicStatus{
+			Monitor: models.Monitor{
+				Name:       "My API",
+				URL:        "https://example.com",
+				LastStatus: "up",
+			},
+		},
+	}
+
+	router := gin.New()
+	handler := &StatusPageHandler{Service: service}
+	router.GET("/status/:slug", handler.Get)
+
+	fromRaw := "2026-05-20T00:00:00Z"
+	toRaw := "2026-05-20T03:00:00Z"
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/status/my-api?range=24h&from="+fromRaw+"&to="+toRaw,
+		nil,
+	)
+
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+
+	wantFrom, err := time.Parse(time.RFC3339, fromRaw)
+	if err != nil {
+		t.Fatalf("Parse(from) error = %v", err)
+	}
+	wantTo, err := time.Parse(time.RFC3339, toRaw)
+	if err != nil {
+		t.Fatalf("Parse(to) error = %v", err)
+	}
+
+	if !service.from.Equal(wantFrom) {
+		t.Fatalf("from = %s, want %s", service.from, wantFrom)
+	}
+	if !service.to.Equal(wantTo) {
+		t.Fatalf("to = %s, want %s", service.to, wantTo)
+	}
+}
