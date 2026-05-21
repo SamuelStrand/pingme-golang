@@ -10,10 +10,6 @@ export default defineConfig({
         target: "http://localhost:8080",
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, "")
-      },
-      "/status": {
-        target: "http://localhost:8080",
-        changeOrigin: true
       }
     }
   }

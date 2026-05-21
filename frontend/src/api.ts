@@ -2,14 +2,6 @@ import type { ApiErrorPayload, StatusPageResponse, TokenPair } from "./types";
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api";
 
-export function publicApiBase(): string {
-  const base = import.meta.env.VITE_API_BASE_URL || "/api";
-  if (base.endsWith("/api")) {
-    return base.slice(0, -4);
-  }
-  return base;
-}
-
 export class ApiError extends Error {
   status: number;
   payload: ApiErrorPayload | null;
@@ -81,7 +73,5 @@ export function clearTokens() {
 }
 
 export async function fetchStatusPage(slug: string): Promise<StatusPageResponse> {
-  return apiRequest<StatusPageResponse>(`/status/${encodeURIComponent(slug)}`, {
-    baseUrl: publicApiBase()
-  });
+  return apiRequest<StatusPageResponse>(`/status/${encodeURIComponent(slug)}`);
 }

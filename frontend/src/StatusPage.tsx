@@ -1,48 +1,40 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis
+} from "recharts";
 import { ApiError, fetchStatusPage } from "./api";
-import type { StatusPageResponse, TargetTimelinePoint } from "./types";
+import { UptimeStrip } from "./components/UptimeStrip";
+import { EmptyState } from "./components/ui/EmptyState";
+import { KpiCard } from "./components/ui/KpiCard";
+import { StatusBadge } from "./components/ui/StatusBadge";
+import { formatPercent, formatShortTime } from "./lib/format";
+import type { StatusPageResponse, TargetStatus, TargetTimelinePoint } from "./types";
 
 type StatusPageProps = {
   slug: string;
 };
 
-function formatPercent(value: number) {
-  return new Intl.NumberFormat(undefined, {
-    minimumFractionDigits: value % 1 === 0 ? 0 : 1,
-    maximumFractionDigits: 1
-  }).format(value);
-}
-
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit"
-  }).format(new Date(value));
-}
-
-function statusLabel(status: string) {
-  switch (status) {
-    case "up":
-      return "Operational";
-    case "down":
-      return "Down";
-    default:
-      return "Unknown";
+function statusAsTargetStatus(status: string): TargetStatus {
+  if (status === "up" || status === "down") {
+    return status;
   }
+  return "unknown";
 }
 
-function statusTone(status: string): "good" | "bad" | "muted" {
-  switch (status) {
-    case "up":
-      return "good";
-    case "down":
-      return "bad";
-    default:
-      return "muted";
-  }
+function buildLatencySeries(timeline: TargetTimelinePoint[]) {
+  return [...timeline]
+    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+    .map((point) => ({
+      label: formatShortTime(point.timestamp),
+      latency: point.response_time_ms,
+      success: point.success
+    }));
 }
 
 export function TimelineBars({
@@ -53,7 +45,12 @@ export function TimelineBars({
   failedChecks?: number;
 }) {
   if (timeline.length === 0) {
-    return <div className="empty-state">No checks recorded for this range</div>;
+    return (
+      <EmptyState
+        title="No checks in the last 24 hours"
+        description="Response time history will appear after monitoring runs."
+      />
+    );
   }
 
   const peakResponseTime = Math.max(
@@ -62,11 +59,18 @@ export function TimelineBars({
   );
 
   return (
-    <TimelineCard>
+    <div className="timeline-card">
+      <header className="status-section-head">
+        <h3>Response time</h3>
+        <span>Per check over the last 24 hours</span>
+      </header>
       <div className="timeline-grid" role="img" aria-label="Response timeline">
         {timeline.map((point) => {
-          const height = Math.max(18, Math.round((Math.max(point.response_time_ms, 1) / peakResponseTime) * 92));
-          const label = `${formatDate(point.timestamp)} - ${point.success ? "Success" : "Failure"} - ${point.response_time_ms} ms`;
+          const height = Math.max(
+            18,
+            Math.round((Math.max(point.response_time_ms, 1) / peakResponseTime) * 92)
+          );
+          const label = `${formatShortTime(point.timestamp)} - ${point.success ? "Success" : "Failure"} - ${point.response_time_ms} ms`;
           return (
             <span
               key={`${point.timestamp}-${point.response_time_ms}-${point.success}`}
@@ -85,12 +89,8 @@ export function TimelineBars({
           </span>
         )}
       </div>
-    </TimelineCard>
+    </div>
   );
-}
-
-function TimelineCard({ children }: { children: import("react").ReactNode }) {
-  return <div className="timeline-card">{children}</div>;
 }
 
 export default function StatusPage({ slug }: StatusPageProps) {
@@ -127,102 +127,128 @@ export default function StatusPage({ slug }: StatusPageProps) {
   }, [load]);
 
   const failedChecks = data?.timeline.filter((point) => !point.success).length ?? 0;
-  const tone = data ? statusTone(data.status) : "muted";
+  const targetStatus = data ? statusAsTargetStatus(data.status) : "unknown";
+  const latencySeries = useMemo(
+    () => (data ? buildLatencySeries(data.timeline) : []),
+    [data]
+  );
+
+  const uptimeTone =
+    data && data.uptime_percent >= 99 ? "good" : data && data.uptime_percent < 95 ? "bad" : "muted";
 
   return (
     <main className="status-shell">
-      <section className="status-panel">
+      <section className="status-panel status-public-page">
         <header className="status-header">
           <div className="brand-row compact">
             <div className="brand-mark">PM</div>
             <div>
               <h1>PingMe</h1>
+              <p className="status-eyebrow">Public status page</p>
             </div>
           </div>
-          <p className="status-eyebrow">Public status</p>
         </header>
 
         {loading ? (
-          <LoadingBlock />
+          <EmptyState title="Loading status" description="Fetching the latest monitor checks." />
         ) : notFound ? (
-          <NotFoundBlock />
+          <div className="status-error">
+            <h2>Status page not found</h2>
+            <p>
+              The monitor may be disabled, the slug is incorrect, or the public page is turned off.
+            </p>
+          </div>
         ) : error ? (
-          <LoadErrorBlock error={error} onRetry={() => void load()} />
+          <div className="status-error">
+            <h2>Unable to load status page</h2>
+            <p>{error}</p>
+            <button className="primary-button" type="button" onClick={() => void load()}>
+              Retry
+            </button>
+          </div>
         ) : data ? (
           <>
-            <StatusHero data={data} tone={tone} />
-            <StatusMetrics data={data} tone={tone} />
-            <p className="status-range-note">Last 24 hours</p>
+            <div className="status-hero-card">
+              <div className="status-hero-main">
+                <h2>{data.monitor_name}</h2>
+                <a className="status-url" href={data.url} target="_blank" rel="noreferrer">
+                  {data.url}
+                </a>
+                <p className="status-slug">/{slug}</p>
+              </div>
+              <StatusBadge status={targetStatus} enabled />
+            </div>
+
+            <div className="kpi-grid status-kpi-grid">
+              <KpiCard
+                label="Uptime (24h)"
+                value={`${formatPercent(data.uptime_percent)}%`}
+                tone={uptimeTone}
+              />
+              <KpiCard label="Avg latency" value={`${Math.round(data.avg_response_ms)} ms`} />
+              <KpiCard label="Checks (24h)" value={data.timeline.length} />
+              <KpiCard
+                label="Failed checks"
+                value={failedChecks}
+                tone={failedChecks > 0 ? "bad" : "good"}
+              />
+            </div>
+
+            <section className="status-section">
+              <header className="status-section-head">
+                <h3>Uptime history</h3>
+                <span>Last 24 hours</span>
+              </header>
+              <UptimeStrip timeline={data.timeline} status={targetStatus} title="24h uptime strip" />
+            </section>
+
+            <section className="status-section chart-card">
+              <header className="status-section-head">
+                <h3>Latency trend</h3>
+                <span>Milliseconds per check</span>
+              </header>
+              {latencySeries.length === 0 ? (
+                <div className="chart-empty">No latency data yet</div>
+              ) : (
+                <ResponsiveContainer width="100%" height={220}>
+                  <AreaChart data={latencySeries} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="publicLatencyFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#22c55e" stopOpacity={0.35} />
+                        <stop offset="100%" stopColor="#22c55e" stopOpacity={0.02} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
+                    <XAxis dataKey="label" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
+                    <YAxis tick={{ fontSize: 11 }} width={42} />
+                    <Tooltip
+                      formatter={(value) => [`${value} ms`, "Latency"]}
+                      contentStyle={{ borderRadius: 8, border: "1px solid #e5e7eb" }}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="latency"
+                      stroke="#16a34a"
+                      fill="url(#publicLatencyFill)"
+                      strokeWidth={2}
+                      dot={false}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              )}
+            </section>
+
             <TimelineBars timeline={data.timeline} failedChecks={failedChecks} />
+
+            <footer className="status-footer">
+              <span>Powered by PingMe</span>
+              <button className="ghost-button" type="button" onClick={() => void load()}>
+                Refresh
+              </button>
+            </footer>
           </>
         ) : null}
       </section>
     </main>
-  );
-}
-
-function LoadingBlock() {
-  return <div className="empty-state">Loading status page</div>;
-}
-
-function NotFoundBlock() {
-  return (
-    <div className="status-error">
-      <h2>Status page not found</h2>
-      <p>The page may be disabled or the address is incorrect.</p>
-    </div>
-  );
-}
-
-function LoadErrorBlock({ error, onRetry }: { error: string; onRetry: () => void }) {
-  return (
-    <div className="status-error">
-      <h2>Unable to load status page</h2>
-      <p>{error}</p>
-      <button className="primary-button" type="button" onClick={onRetry}>
-        Retry
-      </button>
-    </div>
-  );
-}
-
-function StatusHero({
-  data,
-  tone
-}: {
-  data: StatusPageResponse;
-  tone: "good" | "bad" | "muted";
-}) {
-  return (
-    <div className="status-hero">
-      <div>
-        <h2>{data.monitor_name}</h2>
-        <a href={data.url} target="_blank" rel="noreferrer">
-          {data.url}
-        </a>
-      </div>
-      <span className={`status-pill ${tone}`}>{statusLabel(data.status)}</span>
-    </div>
-  );
-}
-
-function StatusMetrics({
-  data,
-  tone
-}: {
-  data: StatusPageResponse;
-  tone: "good" | "bad" | "muted";
-}) {
-  return (
-    <div className="status-metrics">
-      <div className={`metric ${tone}`}>
-        <span>Uptime (24h)</span>
-        <strong>{formatPercent(data.uptime_percent)}%</strong>
-      </div>
-      <div className="metric">
-        <span>Avg latency</span>
-        <strong>{Math.round(data.avg_response_ms)} ms</strong>
-      </div>
-    </div>
   );
 }

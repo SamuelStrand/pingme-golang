@@ -1,5 +1,11 @@
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { ApiError, apiRequest, clearTokens, loadTokens, saveTokens } from "./api";
+import { AnalyticsDashboard } from "./components/AnalyticsCharts";
+import { TargetCardList } from "./components/TargetCardList";
+import { EmptyState } from "./components/ui/EmptyState";
+import { KpiCard } from "./components/ui/KpiCard";
+import { Toggle } from "./components/ui/Toggle";
+import { formatDate } from "./lib/format";
 import {
   AlertChannel,
   AlertChannelType,
@@ -13,13 +19,11 @@ import {
   User
 } from "./types";
 import { DateTimeField } from "./DateTimeField";
-import { TimelineBars } from "./StatusPage";
 import {
   CheckIcon,
   EditIcon,
   ExternalIcon,
   LinkIcon,
-  LogsIcon,
   LogoutIcon,
   PlusIcon,
   RefreshIcon,
@@ -630,13 +634,13 @@ function App() {
           <>
             {view === "overview" && (
               <section className="view-grid">
-                <div className="metric-grid">
-                  <Metric label="Targets" value={targets.total} />
-                  <Metric label="Enabled" value={stats.enabled} />
-                  <Metric label="Up" value={stats.up} accent="good" />
-                  <Metric label="Down" value={stats.down} accent="bad" />
-                  <Metric label="Unknown" value={stats.unknown} accent="muted" />
-                  <Metric label="Channels" value={channels.length} />
+                <div className="kpi-grid">
+                  <KpiCard label="Targets" value={targets.total} />
+                  <KpiCard label="Enabled" value={stats.enabled} />
+                  <KpiCard label="Up" value={stats.up} tone="good" />
+                  <KpiCard label="Down" value={stats.down} tone="bad" />
+                  <KpiCard label="Unknown" value={stats.unknown} tone="muted" />
+                  <KpiCard label="Alert channels" value={channels.length} />
                 </div>
 
                 <div className="panel">
@@ -649,7 +653,7 @@ function App() {
                       </button>
                     }
                   />
-                  <TargetTable
+                  <TargetCardList
                     targets={targets.items.slice(0, 6)}
                     onLogs={(target) => {
                       setSelectedTargetId(target.id);
@@ -679,7 +683,7 @@ function App() {
               <section className="split-view">
                 <div className="panel">
                   <PanelHeader title={editingTargetId ? "Edit Target" : "New Target"} />
-                  <form className="grid-form" onSubmit={handleTargetSubmit}>
+                  <form className="grid-form form-card" onSubmit={handleTargetSubmit}>
                     <label>
                       Name
                       <input
@@ -694,6 +698,7 @@ function App() {
                       URL
                       <input
                         type="url"
+                        className={targetDraft.url && !isValidUrl(targetDraft.url) ? "invalid" : ""}
                         value={targetDraft.url}
                         onChange={(event) =>
                           setTargetDraft((draft) => ({ ...draft, url: event.target.value }))
@@ -701,6 +706,9 @@ function App() {
                         placeholder="https://example.com"
                         required
                       />
+                      {targetDraft.url && !isValidUrl(targetDraft.url) && (
+                        <span className="field-error">Enter a valid http(s) URL</span>
+                      )}
                     </label>
                     <label>
                       Interval, seconds
@@ -708,17 +716,28 @@ function App() {
                         type="number"
                         min={30}
                         max={3600}
+                        className={
+                          targetDraft.interval &&
+                          (Number(targetDraft.interval) < 30 || Number(targetDraft.interval) > 3600)
+                            ? "invalid"
+                            : ""
+                        }
                         value={targetDraft.interval}
                         onChange={(event) =>
                           setTargetDraft((draft) => ({ ...draft, interval: event.target.value }))
                         }
                         required
                       />
+                      {targetDraft.interval &&
+                        (Number(targetDraft.interval) < 30 || Number(targetDraft.interval) > 3600) && (
+                          <span className="field-error">Interval must be between 30 and 3600 seconds</span>
+                        )}
                     </label>
-                    <label>
+                    <label className="field-full">
                       Slug
                       <input
                         value={targetDraft.slug}
+                        className={targetDraft.slug && !isValidSlug(targetDraft.slug) ? "invalid" : ""}
                         onChange={(event) =>
                           setTargetDraft((draft) => ({ ...draft, slug: event.target.value }))
                         }
@@ -726,32 +745,32 @@ function App() {
                         pattern="[a-z0-9-]*"
                         title="3-60 characters: lowercase letters, numbers, and hyphens"
                       />
-                      <small className="field-hint">Публичный адрес: /status/your-slug</small>
+                      <span className="slug-preview">
+                        Public URL: {window.location.origin}/status/{targetDraft.slug.trim() || "your-slug"}
+                      </span>
+                      {targetDraft.slug && !isValidSlug(targetDraft.slug) && (
+                        <span className="field-error">
+                          Use 3-60 lowercase letters, numbers, and hyphens
+                        </span>
+                      )}
                     </label>
-                    <label className="toggle-row">
-                      <input
-                        type="checkbox"
-                        checked={targetDraft.status_page_enabled}
-                        onChange={(event) =>
-                          setTargetDraft((draft) => ({
-                            ...draft,
-                            status_page_enabled: event.target.checked
-                          }))
-                        }
-                      />
-                      Показывать публичную страницу
-                    </label>
-                    <label className="toggle-row">
-                      <input
-                        type="checkbox"
-                        checked={targetDraft.enabled}
-                        onChange={(event) =>
-                          setTargetDraft((draft) => ({ ...draft, enabled: event.target.checked }))
-                        }
-                      />
-                      Enabled
-                    </label>
-                    <div className="form-actions">
+                    <Toggle
+                      className="field-full"
+                      checked={targetDraft.status_page_enabled}
+                      onChange={(checked) =>
+                        setTargetDraft((draft) => ({ ...draft, status_page_enabled: checked }))
+                      }
+                      label="Public status page"
+                      description="Expose a read-only status page for this target"
+                    />
+                    <Toggle
+                      className="field-full"
+                      checked={targetDraft.enabled}
+                      onChange={(checked) => setTargetDraft((draft) => ({ ...draft, enabled: checked }))}
+                      label="Monitoring enabled"
+                      description="Pause checks without deleting the target"
+                    />
+                    <div className="form-actions field-full">
                       {editingTargetId && (
                         <button
                           className="ghost-button"
@@ -787,9 +806,10 @@ function App() {
                       </button>
                     }
                   />
-                  <TargetTable
+                  <TargetCardList
                     targets={targets.items}
                     selectedId={selectedTargetId}
+                    statsForSelected={targetStats}
                     onLogs={(target) => setSelectedTargetId(target.id)}
                     onEdit={startTargetEdit}
                     onDelete={handleDeleteTarget}
@@ -805,19 +825,28 @@ function App() {
                 </div>
 
                 <div className="panel wide-panel">
-                  <TargetAnalyticsPanel
-                    target={selectedTarget}
-                    stats={targetStats}
-                    loading={statsLoading}
-                    range={statsRange}
-                    onRangeChange={setStatsRange}
-                    onRefresh={() => {
-                      if (!selectedTarget) {
-                        return;
-                      }
-                      void fetchTargetStats(selectedTarget.id, statsRange).catch(showError);
-                    }}
-                  />
+                  <PanelHeader title={selectedTarget ? `Analytics: ${displayTargetName(selectedTarget)}` : "Analytics"} />
+                  {!selectedTarget ? (
+                    <EmptyState
+                      title="Select a target to see analytics"
+                      description="Choose a monitor from the list to load charts, KPIs, and incident history."
+                    />
+                  ) : !targetStats ? (
+                    <EmptyState
+                      title={statsLoading ? "Loading analytics" : "No analytics yet"}
+                      description="Checks will appear here after the worker runs a few times."
+                    />
+                  ) : (
+                    <AnalyticsDashboard
+                      stats={targetStats}
+                      loading={statsLoading}
+                      range={statsRange}
+                      onRangeChange={setStatsRange}
+                      onRefresh={() => {
+                        void fetchTargetStats(selectedTarget.id, statsRange).catch(showError);
+                      }}
+                    />
+                  )}
                 </div>
 
                 <div className="panel wide-panel">
@@ -865,7 +894,10 @@ function App() {
                       />
                     </>
                   ) : (
-                    <EmptyState title="No target selected" />
+                    <EmptyState
+                      title="No target selected"
+                      description="Select a monitor to inspect check logs and filter by time range."
+                    />
                   )}
                 </div>
               </section>
@@ -903,16 +935,12 @@ function App() {
                         required
                       />
                     </label>
-                    <label className="toggle-row">
-                      <input
-                        type="checkbox"
-                        checked={alertDraft.enabled}
-                        onChange={(event) =>
-                          setAlertDraft((draft) => ({ ...draft, enabled: event.target.checked }))
-                        }
-                      />
-                      Enabled
-                    </label>
+                    <Toggle
+                      checked={alertDraft.enabled}
+                      onChange={(checked) => setAlertDraft((draft) => ({ ...draft, enabled: checked }))}
+                      label="Channel enabled"
+                      description="Disabled channels will not receive notifications"
+                    />
                     <div className="form-actions">
                       {user?.user_tg && (
                         <button className="ghost-button" type="button" onClick={useConnectedTelegramChat}>
@@ -1058,190 +1086,13 @@ function PanelHeader({
   );
 }
 
-function Metric({
-  label,
-  value,
-  accent
-}: {
-  label: string;
-  value: number | string;
-  accent?: "good" | "bad" | "muted";
-}) {
-  return (
-    <div className={`metric ${accent || ""}`}>
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
-function TargetAnalyticsPanel({
-  target,
-  stats,
-  loading,
-  range,
-  onRangeChange,
-  onRefresh
-}: {
-  target: Target | null;
-  stats: TargetStatsResponse | null;
-  loading: boolean;
-  range: StatsRange;
-  onRangeChange: (range: StatsRange) => void;
-  onRefresh: () => void;
-}) {
-  const action =
-    target &&
-    (
-      <div className="analytics-toolbar">
-        <div className="range-switch" role="tablist" aria-label="Analytics range">
-          <button
-            type="button"
-            className={range === "24h" ? "range-button active" : "range-button"}
-            onClick={() => onRangeChange("24h")}
-          >
-            24h
-          </button>
-          <button
-            type="button"
-            className={range === "7d" ? "range-button active" : "range-button"}
-            onClick={() => onRangeChange("7d")}
-          >
-            7d
-          </button>
-        </div>
-        <button
-          className="icon-button"
-          type="button"
-          title="Refresh analytics"
-          aria-label="Refresh analytics"
-          onClick={onRefresh}
-          disabled={loading}
-        >
-          <RefreshIcon />
-        </button>
-      </div>
-    );
-
-  return (
-    <>
-      <PanelHeader
-        title={target ? `Analytics: ${displayTargetName(target)}` : "Analytics"}
-        action={action}
-      />
-      {!target ? (
-        <EmptyState title="Select a target to see analytics" />
-      ) : !stats ? (
-        <EmptyState title={loading ? "Loading analytics" : "No analytics yet"} />
-      ) : (
-        <div className="analytics-shell">
-          <div className="analytics-metrics">
-            <Metric
-              label="Uptime"
-              value={`${formatPercent(stats.uptime_percent)}%`}
-              accent={accentForUptime(stats.uptime_percent)}
-            />
-            <Metric label="Avg latency" value={`${Math.round(stats.avg_response_ms)} ms`} />
-            <Metric label="Checks" value={stats.total_checks} />
-            <Metric label="Failures" value={stats.failed_checks} accent={stats.failed_checks > 0 ? "bad" : "good"} />
-          </div>
-          <TimelineBars timeline={stats.timeline} failedChecks={stats.failed_checks} />
-          <div className="analytics-footnote">
-            Range {formatDate(stats.from)} to {formatDate(stats.to)}
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
-
-function TargetTable({
-  targets,
-  selectedId,
-  onLogs,
-  onEdit,
-  onDelete
-}: {
-  targets: Target[];
-  selectedId?: string | null;
-  onLogs: (target: Target) => void;
-  onEdit: (target: Target) => void;
-  onDelete: (target: Target) => void;
-}) {
-  if (targets.length === 0) {
-    return <EmptyState title="No targets" />;
-  }
-
-  return (
-    <div className="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Status</th>
-            <th>Interval</th>
-            <th>Last Check</th>
-            <th className="actions-cell">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {targets.map((target) => (
-            <tr key={target.id} className={target.id === selectedId ? "selected-row" : ""}>
-              <td>
-                <div className="target-cell">
-                  <strong>{displayTargetName(target)}</strong>
-                  <TargetCellLinks target={target} />
-                </div>
-              </td>
-              <td>
-                <StatusBadge status={target.status} enabled={target.enabled} />
-              </td>
-              <td>{target.interval}s</td>
-              <td>{target.last_checked_at ? formatDate(target.last_checked_at) : "Never"}</td>
-              <td className="actions-cell">
-                <button
-                  className="icon-button"
-                  type="button"
-                  title="Show logs"
-                  aria-label="Show logs"
-                  onClick={() => onLogs(target)}
-                >
-                  <LogsIcon />
-                </button>
-                <button
-                  className="icon-button"
-                  type="button"
-                  title="Edit target"
-                  aria-label="Edit target"
-                  onClick={() => onEdit(target)}
-                >
-                  <EditIcon />
-                </button>
-                <button
-                  className="icon-button danger"
-                  type="button"
-                  title="Delete target"
-                  aria-label="Delete target"
-                  onClick={() => onDelete(target)}
-                >
-                  <TrashIcon />
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
 function LogsTable({ logs, loading }: { logs: TargetLogListResponse["items"]; loading: boolean }) {
   if (loading) {
-    return <EmptyState title="Loading logs" />;
+    return <EmptyState title="Loading logs" description="Fetching check history for the selected target." />;
   }
 
   if (logs.length === 0) {
-    return <EmptyState title="No logs" />;
+    return <EmptyState title="No logs yet" description="Run a few checks and they will show up here." />;
   }
 
   return (
@@ -1276,28 +1127,6 @@ function LogsTable({ logs, loading }: { logs: TargetLogListResponse["items"]; lo
   );
 }
 
-function TargetCellLinks({ target }: { target: Target }) {
-  return (
-    <div className="target-cell-links">
-      <a href={target.url} target="_blank" rel="noreferrer">
-        {target.url}
-      </a>
-      {target.slug && target.status_page_enabled && (
-        <a
-          className="status-page-link icon-button"
-          href={`/status/${target.slug}`}
-          target="_blank"
-          rel="noreferrer"
-          title="Open public status page"
-          aria-label="Open public status page"
-        >
-          <ExternalIcon />
-        </a>
-      )}
-    </div>
-  );
-}
-
 function ChannelList({
   channels,
   onEdit,
@@ -1308,7 +1137,12 @@ function ChannelList({
   onDelete: (channel: AlertChannel) => void;
 }) {
   if (channels.length === 0) {
-    return <EmptyState title="No alert channels" />;
+    return (
+      <EmptyState
+        title="No alert channels"
+        description="Add a webhook or Telegram channel to get downtime notifications."
+      />
+    );
   }
 
   return (
@@ -1375,13 +1209,6 @@ function Pagination({
   );
 }
 
-function StatusBadge({ status, enabled }: { status: Target["status"]; enabled: boolean }) {
-  if (!enabled) {
-    return <span className="status-badge disabled">disabled</span>;
-  }
-  return <span className={`status-badge ${status}`}>{status}</span>;
-}
-
 function StatusDot({ enabled }: { enabled: boolean }) {
   return <span className={enabled ? "status-dot enabled" : "status-dot disabled"} />;
 }
@@ -1389,10 +1216,6 @@ function StatusDot({ enabled }: { enabled: boolean }) {
 function HealthPill({ health, failed }: { health: Health | null; failed: boolean }) {
   const ok = !failed && health?.status === "ok";
   return <span className={ok ? "health-pill ok" : "health-pill bad"}>{ok ? "API online" : "API offline"}</span>;
-}
-
-function EmptyState({ title }: { title: string }) {
-  return <div className="empty-state">{title}</div>;
 }
 
 function Toast({ notice }: { notice: Exclude<Notice, null> }) {
@@ -1416,31 +1239,21 @@ function displayTargetName(target: Target) {
   return target.name || target.url;
 }
 
-function accentForUptime(value: number): "good" | "bad" | "muted" {
-  if (value >= 99) {
-    return "good";
+function isValidUrl(value: string) {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
   }
-  if (value >= 95) {
-    return "muted";
-  }
-  return "bad";
 }
 
-function formatPercent(value: number) {
-  return new Intl.NumberFormat(undefined, {
-    minimumFractionDigits: value % 1 === 0 ? 0 : 1,
-    maximumFractionDigits: 1
-  }).format(value);
-}
-
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit"
-  }).format(new Date(value));
+function isValidSlug(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return true;
+  }
+  return /^[a-z0-9-]{3,60}$/.test(trimmed);
 }
 
 function messageFromError(error: unknown) {
